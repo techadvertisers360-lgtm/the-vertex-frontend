@@ -1,0 +1,78 @@
+/*
+ * THE VERTEX HEALTH — DESIGN TOKENS (single source of truth)
+ *
+ * Provisional values supplied by the client (docs/DECISIONS.md D-025) until the Figma PNG exports are available.
+ * A reskin must only change this file (plus small component tweaks). Every value below becomes:
+ *   - a CSS custom property on :root (e.g. var(--color-brand)), and
+ *   - a Tailwind utility via the @theme namespace (e.g. bg-brand, text-ink, border-line, rounded-card,
+ *     shadow-card, text-label, w-sidebar, h-control).
+ * Components must use these semantic names, never raw hex values.
+ */
+
+@theme {
+  /* ── Brand ── */
+  --color-brand: #0e4d45; /* header bars, primary buttons, active nav */
+  --color-brand-hover: #0a3b35; /* hover / darker */
+  --color-brand-medium: #0f766e; /* section labels, links, icons */
+  --color-brand-light: #e6f2f0; /* selected rows, active nav bg, badges */
+  --color-gold: #b8893a; /* leadership / marketing accents */
+  --color-gold-light: #f7efe1; /* gold badges / backgrounds */
+
+  /* ── Surfaces & text ── */
+  --color-canvas: #f2f4f3; /* page background */
+  --color-surface: #ffffff; /* cards, panels, sidebar */
+  --color-line: #e2e8e6; /* borders, dividers */
+  --color-ink: #16302b; /* primary text */
+  --color-muted: #5b6b67; /* secondary text */
+  --color-on-brand: #ffffff; /* text on dark teal */
+  --color-on-brand-muted: #cfe3df; /* subtitles on dark teal */
+
+  /* ── Status ── */
+  --color-success: #15803d;
+  --color-success-bg: #dcfce7;
+  --color-warning: #b45309;
+  --color-warning-bg: #fef3c7;
+  --color-danger: #b91c1c;
+  --color-danger-bg: #fee2e2;
+  --color-info: #1d4ed8;
+  --color-info-bg: #dbeafe;
+  --color-neutral: #475569;
+  --color-neutral-bg: #f1f5f9;
+
+  /* ── Role accents (4px left border on cards) ── */
+  --color-accent-ops: #0e4d45; /* Lead Team, Reception, Doctor, Assistant, Office Boy, Stock */
+  --color-accent-leadership: #b8893a; /* Manager, MD, Hamza Zafar, Muaz Tahir */
+
+  /* ── Typography ── */
+  --font-sans: var(--font-inter), system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --text-label: 11px; /* uppercase section labels */
+  --text-label--line-height: 16px;
+  --text-label--letter-spacing: 0.06em;
+  --text-label--font-weight: 600;
+  --text-title: 22px; /* page title */
+  --text-title--line-height: 30px;
+  --text-title--font-weight: 700;
+  --text-card-title: 15px; /* card title */
+  --text-card-title--line-height: 22px;
+  --text-card-title--font-weight: 600;
+  --text-body: 14px; /* body */
+  --text-body--line-height: 21px;
+  --text-dense: 13px; /* dense tables */
+  --text-dense--line-height: 19px;
+
+  /* ── Shape ── */
+  --radius-card: 12px;
+  --radius-control: 8px;
+  --shadow-card: 0 1px 2px rgba(16, 48, 43, 0.06);
+  --shadow-overlay: 0 12px 32px rgba(16, 48, 43, 0.18);
+
+  /* ── Layout sizes (4px grid) ── */
+  --spacing-header: 56px;
+  --spacing-sidebar: 240px;
+  --spacing-rail: 320px;
+  --spacing-control: 40px; /* min button / input height */
+  --spacing-control-touch: 44px; /* on mobile */
+  --spacing-page: 24px; /* page padding desktop */
+  --spacing-page-mobile: 16px;
+  --spacing-accent: 4px; /* role accent border */
+}
