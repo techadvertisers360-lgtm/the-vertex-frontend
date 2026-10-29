@@ -200,16 +200,101 @@ export function DoctorServiceFields({
           <option value="PROCEDURE">Procedure</option>
         </Select>
       </Field>
-      <Field label="Service" htmlFor="service" hint="Optional — duration isi se banti hai">
-        <Select id="service" value={serviceId} onChange={(e) => onChange({ serviceId: e.target.value })}>
-          <option value="">{type === 'PROCEDURE' ? 'Procedure chunein…' : 'General consultation'}</option>
-          {svc.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.name}
-            </option>
-          ))}
-        </Select>
+      <Field label="Service" htmlFor="service" hint="Naam likh kar search karein — duration isi se banti hai">
+        <SearchSelect id="service" value={serviceId} options={svc} emptyLabel={type === 'PROCEDURE' ? 'Procedure chunein…' : 'General consultation'} onChange={(v) => onChange({ serviceId: v })} />
       </Field>
+    </div>
+  );
+}
+
+/**
+ * Dropdown with a search box for long lists (the procedures list): type part of a name to narrow it, click or press
+ * Enter to pick. The empty choice stays on top.
+ */
+export function SearchSelect({
+  id,
+  value,
+  options,
+  emptyLabel,
+  onChange,
+  disabled,
+}: {
+  id: string;
+  value: string;
+  options: { id: string; name: string }[];
+  emptyLabel: string;
+  onChange: (v: string) => void;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const [q, setQ] = React.useState('');
+  const [active, setActive] = React.useState(0);
+  const selected = options.find((o) => o.id === value);
+  const needle = q.trim().toLowerCase();
+  const shown = needle ? options.filter((o) => o.name.toLowerCase().includes(needle)) : options;
+  const items = [{ id: '', name: emptyLabel }, ...shown];
+  const pick = (v: string) => {
+    onChange(v);
+    setOpen(false);
+    setQ('');
+  };
+  return (
+    <div className="relative">
+      <Input
+        id={id}
+        role="combobox"
+        aria-expanded={open}
+        aria-controls={`${id}-list`}
+        autoComplete="off"
+        disabled={disabled}
+        value={open ? q : (selected?.name ?? '')}
+        placeholder={selected?.name ?? emptyLabel}
+        onFocus={() => {
+          setOpen(true);
+          setActive(0);
+        }}
+        onBlur={() => setOpen(false)}
+        onChange={(e) => {
+          setQ(e.target.value);
+          setOpen(true);
+          setActive(e.target.value.trim() ? 1 : 0);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setOpen(true);
+            setActive((a) => Math.min(a + 1, items.length - 1));
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setActive((a) => Math.max(a - 1, 0));
+          } else if (e.key === 'Enter' && open) {
+            e.preventDefault();
+            const it = items[active] ?? items[0];
+            if (it) pick(it.id);
+          } else if (e.key === 'Escape') setOpen(false);
+        }}
+      />
+      {open && (
+        <ul id={`${id}-list`} role="listbox" className="absolute z-30 mt-1 max-h-64 w-full min-w-56 overflow-auto rounded-control border border-line bg-surface py-1 shadow-card">
+          {items.map((o, i) => (
+            <li
+              key={o.id || 'none'}
+              role="option"
+              aria-selected={o.id === value}
+              // mousedown, not click: the input's blur would close the list first
+              onMouseDown={(e) => {
+                e.preventDefault();
+                pick(o.id);
+              }}
+              onMouseEnter={() => setActive(i)}
+              className={cn('cursor-pointer px-3 py-2 text-dense', i === active ? 'bg-brand-light text-ink' : 'text-ink', o.id === value && 'font-semibold', !o.id && 'text-muted')}
+            >
+              {o.name}
+            </li>
+          ))}
+          {needle && shown.length === 0 && <li className="px-3 py-2 text-dense text-muted">Is naam se kuch nahi mila</li>}
+        </ul>
+      )}
     </div>
   );
 }

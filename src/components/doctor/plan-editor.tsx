@@ -12,7 +12,7 @@ import { formatRs } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, SectionLabel } from '@/components/ui/card';
 import { Checkbox, Field, Input, Notice, Select, Textarea } from '@/components/ui/form';
-import { SlotPicker, SuggestionButtons, useServices, type SlotValue } from '@/components/booking/slot-picker';
+import { SearchSelect, SlotPicker, SuggestionButtons, useServices, type SlotValue } from '@/components/booking/slot-picker';
 
 interface ItemForm {
   key: string;
@@ -167,22 +167,17 @@ export function PlanEditor({ appointmentId, doctorId, existing, locked }: { appo
               </div>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <Field label="Procedure" htmlFor={`it-s-${it.key}`}>
-                  <Select
+                  <SearchSelect
                     id={`it-s-${it.key}`}
                     value={it.serviceId}
                     disabled={locked}
-                    onChange={(e) => {
-                      const svc = procedures.find((s) => s.id === e.target.value);
-                      setItem(it.key, { serviceId: e.target.value, procedureName: svc?.name ?? it.procedureName, slot: null });
+                    options={procedures}
+                    emptyLabel="Other (likhein)"
+                    onChange={(v) => {
+                      const svc = procedures.find((s) => s.id === v);
+                      setItem(it.key, { serviceId: v, procedureName: svc?.name ?? it.procedureName, slot: null });
                     }}
-                  >
-                    <option value="">Other (likhein)</option>
-                    {procedures.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </Select>
+                  />
                 </Field>
                 <Field label="Name" required htmlFor={`it-n-${it.key}`}>
                   <Input id={`it-n-${it.key}`} value={it.procedureName} onChange={(e) => setItem(it.key, { procedureName: e.target.value })} disabled={locked} />
