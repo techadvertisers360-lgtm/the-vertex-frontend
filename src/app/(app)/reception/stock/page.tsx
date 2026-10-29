@@ -12,7 +12,7 @@ import { Card, CardHeader, CardTitle, PageHeader } from '@/components/ui/card';
 import { Chip } from '@/components/ui/chip';
 import { ChoiceField } from '@/components/ui/choice-field';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { Field, Input, Notice, Select } from '@/components/ui/form';
+import { Field, Input, Notice } from '@/components/ui/form';
 import { QueryState } from '@/components/ui/states';
 import { INTAKE_STATUS, type Intake } from '@/components/inventory/stock-verify-tab';
 
@@ -20,7 +20,7 @@ import { INTAKE_STATUS, type Intake } from '@/components/inventory/stock-verify-
  * Reception "Stock & batches" (D-048): two categories — products used in procedures, and pharmacy products sold at
  * billing. Add a product (or more of an existing one) with name, quantity and price. Both lists and add forms use the
  * columns of the stock CSV (D-057); the pharmacy list has one row per batch. Each product can be edited or deleted
- * (hidden, history kept — D-058).
+ * (hidden, history kept — D-058). Item ID is generated in one sequence P-0001, P-0002, … (D-069).
  */
 type Kind = 'PROCEDURE' | 'PHARMACY';
 
@@ -46,15 +46,10 @@ interface Row {
   nextExpiry: string | null;
   expired: boolean;
   pendingQty: number;
-  // stock CSV columns (D-055 / D-057)
+  // procedure catalogue columns (D-057); Item ID is generated (D-069)
   code: string | null;
-  category: string;
-  department: string | null;
   procedureUse: string | null;
-  packUnit: string | null;
   packSize: number | null;
-  itemType: string | null;
-  sterile: boolean | null;
   note: string | null;
   salePricePaisa: number | null;
   batches: Batch[];
@@ -90,14 +85,8 @@ const EMPTY = {
   expiry: '',
   minQty: '',
   // procedure
-  code: '',
-  category: '',
-  department: '',
   procedureUse: '',
-  packUnit: '',
   packSize: '',
-  itemType: '',
-  sterile: '',
   note: '',
   // pharmacy
   lotNo: '',
@@ -117,10 +106,6 @@ function useOptionLists(rows: Row[]): Options {
     return {
       names: distinct(rows.map((r) => r.name)),
       units: distinct([...UNITS, ...rows.map((r) => r.unit)]),
-      categories: distinct(rows.map((r) => r.category)),
-      departments: distinct(rows.map((r) => r.department)),
-      packUnits: distinct([...UNITS, ...rows.map((r) => r.packUnit)]),
-      itemTypes: distinct(rows.map((r) => r.itemType)),
       distributors: distinct(rows.flatMap((r) => (r.batches ?? []).map((b) => b.distributor))),
     };
   }, [rows]);
@@ -173,27 +158,15 @@ function TextField({
   );
 }
 
-/** The procedure catalogue fields — same labels as the stock CSV (D-057). */
+/** The procedure catalogue fields (D-057); Item ID is not typed — the app gives the next number (D-069). */
 function ProcedureFields({ f, set, kind, nameHint }: { f: FormState; set: SetField; kind: Kind; nameHint?: string }) {
   const p = { f, set, kind };
   return (
     <>
       <TextField {...p} k="name" label="Product or Supply" required list="names" placeholder="e.g. Gloves" hint={nameHint} />
-      <TextField {...p} k="code" label="Item ID" />
-      <TextField {...p} k="category" label="Stock Category" list="categories" />
-      <TextField {...p} k="department" label="Department" list="departments" />
       <TextField {...p} k="procedureUse" label="Procedure / Use" hint="Kai procedures hon to ; se alag karein" />
       <TextField {...p} k="unit" label="Inventory Unit" list="units" />
-      <TextField {...p} k="packUnit" label="Purchase Unit" list="packUnits" />
       <TextField {...p} k="packSize" label="Units per Purchase Pack" numeric />
-      <TextField {...p} k="itemType" label="Item Type" list="itemTypes" />
-      <Field label="Sterile" htmlFor={`sterile-${kind}-field`}>
-        <Select id={`sterile-${kind}-field`} value={f.sterile} onChange={set('sterile')}>
-          <option value="">—</option>
-          <option value="yes">Yes</option>
-          <option value="no">No</option>
-        </Select>
-      </Field>
       <TextField {...p} k="note" label="Stock / Selection Note" />
     </>
   );
@@ -229,14 +202,8 @@ function AddForm({ kind, rows, onClose }: { kind: Kind; rows: Row[]; onClose: ()
         }
       : {
           details: {
-            code: f.code.trim() || undefined,
-            category: f.category.trim() || undefined,
-            department: f.department.trim() || undefined,
             procedureUse: f.procedureUse.trim() || undefined,
-            packUnit: f.packUnit.trim() || undefined,
             packSize: packSizeOf(f) ?? undefined,
-            itemType: f.itemType.trim() || undefined,
-            sterile: f.sterile === '' ? undefined : f.sterile === 'yes',
             note: f.note.trim() || undefined,
           },
         }),
@@ -272,7 +239,7 @@ function AddForm({ kind, rows, onClose }: { kind: Kind; rows: Row[]; onClose: ()
         {kind === 'PROCEDURE' ? (
           <>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <ProcedureFields {...p} nameHint={existing ? 'Pehle se hai — details update aur quantity add hogi' : undefined} />
+              <ProcedureFields {...p} nameHint={existing ? 'Pehle se hai — details update aur quantity add hogi' : 'Item ID khud lag jayega'} />
             </div>
             <div className="grid gap-3 border-t border-line pt-3 sm:grid-cols-3">
               <TextField {...p} k="quantity" label="Quantity" numeric hint="Khaali = sirf product save (stock nahi)" />
@@ -319,14 +286,8 @@ function EditDialog({ kind, row, onClose }: { kind: Kind; row: Row; onClose: () 
     unit: row.unit,
     minQty: String(row.minQty),
     price: paisaToRupeesInput(row.salePricePaisa),
-    code: row.code ?? '',
-    category: row.category ?? '',
-    department: row.department ?? '',
     procedureUse: row.procedureUse ?? '',
-    packUnit: row.packUnit ?? '',
     packSize: row.packSize ? String(row.packSize) : '',
-    itemType: row.itemType ?? '',
-    sterile: row.sterile === null ? '' : row.sterile ? 'yes' : 'no',
     note: row.note ?? '',
   });
   const set: SetField = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
@@ -343,14 +304,8 @@ function EditDialog({ kind, row, onClose }: { kind: Kind; row: Row; onClose: () 
         ...(kind === 'PROCEDURE'
           ? {
               details: {
-                code: f.code.trim() || null,
-                category: f.category.trim() || null,
-                department: f.department.trim() || null,
                 procedureUse: f.procedureUse.trim() || null,
-                packUnit: f.packUnit.trim() || null,
                 packSize: packSizeOf(f),
-                itemType: f.itemType.trim() || null,
-                sterile: f.sterile === '' ? null : f.sterile === 'yes',
                 note: f.note.trim() || null,
               },
             }
@@ -365,7 +320,7 @@ function EditDialog({ kind, row, onClose }: { kind: Kind; row: Row; onClose: () 
   const p = { f, set, kind };
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent wide title="Product edit karein" description={row.name}>
+      <DialogContent wide title="Product edit karein" description={row.code ? `${row.code} · ${row.name}` : row.name}>
         <form
           className="space-y-4"
           onSubmit={(e) => {
@@ -497,16 +452,6 @@ const PROCEDURE_COLS: {
     cell: (i) => val(i.code),
   },
   {
-    label: 'Stock Category',
-    className: 'min-w-[140px]',
-    cell: (i) => val(i.category),
-  },
-  {
-    label: 'Department',
-    className: 'min-w-[130px]',
-    cell: (i) => val(i.department),
-  },
-  {
     label: 'Procedure / Use',
     className: 'min-w-[220px]',
     cell: (i) => val(i.procedureUse),
@@ -522,24 +467,9 @@ const PROCEDURE_COLS: {
     cell: (i) => val(i.unit),
   },
   {
-    label: 'Purchase Unit',
-    className: 'whitespace-nowrap',
-    cell: (i) => val(i.packUnit),
-  },
-  {
     label: 'Units per Purchase Pack',
     className: 'text-right',
     cell: (i) => val(i.packSize),
-  },
-  {
-    label: 'Item Type',
-    className: 'min-w-[120px]',
-    cell: (i) => val(i.itemType),
-  },
-  {
-    label: 'Sterile',
-    className: 'whitespace-nowrap',
-    cell: (i) => (i.sterile === null || i.sterile === undefined ? dash : i.sterile ? 'Yes' : 'No'),
   },
   {
     label: 'Stock / Selection Note',
@@ -667,7 +597,7 @@ function ProductList({ kind }: { kind: Kind }) {
   const match = (i: Row) =>
     (showRemoved ? !i.active : i.active) &&
     (!needle ||
-      [i.name, i.code, i.category, i.department, i.procedureUse, i.itemType, i.note, ...(i.batches ?? []).flatMap((b) => [b.lotNo, b.distributor])].some((v) => v?.toLowerCase().includes(needle)));
+      [i.name, i.code, i.procedureUse, i.note, ...(i.batches ?? []).flatMap((b) => [b.lotNo, b.distributor])].some((v) => v?.toLowerCase().includes(needle)));
 
   return (
     <OptionsContext.Provider value={options}>
