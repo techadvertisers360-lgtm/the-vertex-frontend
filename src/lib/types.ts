@@ -106,7 +106,7 @@ export interface LeadAppointment {
   cancelReason: string | null;
   checkedInAt: string | null;
   patient: { id: string; name: string; phone: string };
-  doctorId: string;
+  doctorId: string | null;
   doctorName: string | null;
   roomCode: string | null;
 }
@@ -225,7 +225,7 @@ export interface ReceptionAppt {
   status: string;
   reason: string | null;
   source: string;
-  doctorId: string;
+  doctorId: string | null;
   checkedInAt: string | null;
   acceptedAt: string | null;
   sentToReceptionAt: string | null;

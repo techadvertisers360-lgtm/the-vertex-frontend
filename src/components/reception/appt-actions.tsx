@@ -83,7 +83,7 @@ export function ApptActions({ appt, compact }: { appt: ReceptionAppt; compact?: 
       {dialog === 'cancel' && (
         <ReasonDialog
           title="Cancel appointment"
-          description={`${appt.patient.name} · ${appt.doctorName}`}
+          description={`${appt.patient.name} · ${appt.doctorName ?? 'Doctor nahi'}`}
           label="Cancel reason"
           submitLabel="Cancel appointment"
           danger

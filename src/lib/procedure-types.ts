@@ -54,7 +54,7 @@ export interface PendingProcedure {
   planItemId: string;
   appointmentId: string;
   patient: { id: string; name: string };
-  doctorId: string;
+  doctorId: string | null;
   doctorName: string | null;
   procedureName: string;
   sessionNumber: number;

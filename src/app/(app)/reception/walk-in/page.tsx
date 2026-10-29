@@ -33,7 +33,7 @@ interface ServiceRow {
   defaultPricePaisa: number | null;
 }
 interface WalkInResult {
-  appointment: { id: string; startAt: string; status: string; type: string; doctorId: string };
+  appointment: { id: string; startAt: string; status: string; type: string; doctorId: string | null };
   planItemId: string | null;
 }
 
@@ -91,12 +91,12 @@ function PatientPicker({ onPick }: { onPick: (p: PatientCard) => void }) {
   );
 }
 
-function DoctorField({ value, onChange, label = 'Doctor', hint }: { value: string; onChange: (v: string) => void; label?: string; hint?: string }) {
+function DoctorField({ value, onChange, label = 'Doctor', hint, optional }: { value: string; onChange: (v: string) => void; label?: string; hint?: string; optional?: boolean }) {
   const doctors = useDoctors();
   return (
-    <Field label={label} required hint={hint} htmlFor="wi-doctor">
+    <Field label={label} required={!optional} hint={hint} htmlFor="wi-doctor">
       <Select id="wi-doctor" value={value} onChange={(e) => onChange(e.target.value)}>
-        <option value="">Doctor chunein…</option>
+        <option value="">{optional ? 'Koi Doctor nahi' : 'Doctor chunein…'}</option>
         {doctors.data?.items.map((d) => (
           <option key={d.id} value={d.id}>
             {d.displayName}
@@ -133,7 +133,7 @@ function VisitForm({ patient, want, onDone }: { patient: PatientCard; want: 'CON
       if (e instanceof ApiError && e.code === 'NO_SLOT_TODAY') setNextAvailable((e.details as { nextAvailable: Suggestion[] }).nextAvailable ?? []);
     },
   });
-  const valid = !!doctorId && (want === 'CONSULTATION' || !!serviceId) && (!assistant || pricePaisa !== null);
+  const valid = (assistant || !!doctorId) && (want === 'CONSULTATION' || !!serviceId) && (!assistant || pricePaisa !== null);
 
   return (
     <form
@@ -145,7 +145,7 @@ function VisitForm({ patient, want, onDone }: { patient: PatientCard; want: 'CON
         m.mutate({
           patientId: patient.id,
           intent: want === 'CONSULTATION' ? 'CONSULTATION' : assistant ? 'PROCEDURE_ASSISTANT' : 'PROCEDURE_DOCTOR',
-          doctorId,
+          doctorId: doctorId || undefined,
           serviceId: want === 'PROCEDURE' ? serviceId : undefined,
           pricePaisa: assistant ? (pricePaisa ?? undefined) : undefined,
           reason: reason.trim() || undefined,
@@ -187,8 +187,9 @@ function VisitForm({ patient, want, onDone }: { patient: PatientCard; want: 'CON
       <DoctorField
         value={doctorId}
         onChange={setDoctorId}
-        label={assistant ? 'Doctor (record ke liye)' : 'Doctor'}
-        hint={assistant ? 'Patient Doctor ki queue mein nahi jayega — Assistant seedha karega' : 'Doctor ke aaj ke sab se pehle khaali waqt par queue mein jayega'}
+        optional={assistant}
+        label={assistant ? 'Doctor (optional)' : 'Doctor'}
+        hint={assistant ? 'Chahein to Doctor add karein, warna khaali chhor dein — patient Doctor ki queue mein nahi jayega, Assistant seedha karega' : 'Doctor ke aaj ke sab se pehle khaali waqt par queue mein jayega'}
       />
       <Field label="Note" htmlFor="wi-reason">
         <Textarea id="wi-reason" rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Optional" />

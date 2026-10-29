@@ -61,7 +61,7 @@ export default function AssistantHome() {
                       {p.status === 'BLOCKED' ? <Chip tone="danger">Emergency</Chip> : <Chip tone="info">Next: {stepLabel(p.currentStep)}</Chip>}
                     </div>
                     <p className="mt-1 text-dense text-muted">
-                      {p.procedure?.procedureName} · {p.doctorName} · Room {p.roomCode}
+                      {p.procedure?.procedureName} · {p.doctorName ?? 'Doctor nahi'} · Room {p.roomCode}
                       {p.assignedAt && ` · assigned ${formatTime(p.assignedAt)} (${relativeFromNow(p.assignedAt)})`}
                     </p>
                   </div>

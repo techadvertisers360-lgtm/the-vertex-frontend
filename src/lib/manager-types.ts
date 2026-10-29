@@ -72,7 +72,7 @@ export interface ApptCard {
   type: 'CONSULTATION' | 'PROCEDURE';
   status: string;
   roomId: string | null;
-  doctorId: string;
+  doctorId: string | null;
   source: string;
   patient: { id: string; name: string; phone: string };
   doctorName: string | null;

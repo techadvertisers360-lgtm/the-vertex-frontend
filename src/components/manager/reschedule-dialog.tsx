@@ -52,7 +52,7 @@ export function ManagerRescheduleDialog({ appt, requestId, defaultReason = '', o
             m.mutate({ start: slot!.start, roomId: slot!.roomId, reason: reason.trim(), patientConfirmed: patientOk, doctorConfirmed: doctorOk, requestId });
           }}
         >
-          <SlotPicker doctorId={appt.doctorId} type={appt.type} value={slot} onChange={setSlot} />
+          <SlotPicker doctorId={appt.doctorId ?? ''} type={appt.type} value={slot} onChange={setSlot} />
           {conflict && (
             <div className="space-y-2">
               <Notice tone="warning">{conflict.message}</Notice>

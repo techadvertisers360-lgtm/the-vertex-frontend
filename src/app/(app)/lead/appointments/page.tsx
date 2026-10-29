@@ -49,7 +49,7 @@ function RescheduleDialog({ appt, onClose }: { appt: LeadAppointment; onClose: (
               <SuggestionButtons suggestions={conflict} onPick={(s) => setSlot({ start: s.start, roomId: s.roomId, roomCode: s.roomCode })} />
             </div>
           )}
-          <SlotPicker doctorId={appt.doctorId} type={appt.type} value={slot} onChange={setSlot} />
+          <SlotPicker doctorId={appt.doctorId ?? ''} type={appt.type} value={slot} onChange={setSlot} />
           <Field label="Reschedule reason" required htmlFor="rs-reason">
             <Textarea id="rs-reason" rows={2} value={reason} onChange={(e) => setReason(e.target.value)} />
           </Field>

@@ -262,7 +262,7 @@ export default function ProcedurePage() {
           <div className="min-w-0">
             <CardTitle>{t.patient?.name}</CardTitle>
             <p className="text-dense text-muted">
-              {t.procedure?.procedureName} (session {t.procedure?.sessionNumber}) · {t.doctorName} · Room {t.roomCode}
+              {t.procedure?.procedureName} (session {t.procedure?.sessionNumber}) · {t.doctorName ?? 'Doctor nahi'} · Room {t.roomCode}
             </p>
           </div>
           {t.status === 'BLOCKED' ? <Chip tone="danger">Emergency — Manager replacement</Chip> : <Chip tone={closed ? 'success' : 'info'}>{stepLabel(t.currentStep)}</Chip>}

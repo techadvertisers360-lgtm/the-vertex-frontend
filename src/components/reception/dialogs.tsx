@@ -245,7 +245,7 @@ export function VitalsDialog({ appt, onClose }: { appt: ReceptionAppt; onClose: 
   const set = (k: keyof typeof v) => (e: React.ChangeEvent<HTMLInputElement>) => setV({ ...v, [k]: e.target.value.replace(/[^\d.]/g, '') });
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent title="Vitals" description={`${appt.patient.name} · ${appt.doctorName}`}>
+      <DialogContent title="Vitals" description={`${appt.patient.name} · ${appt.doctorName ?? 'Doctor nahi'}`}>
         <form
           className="space-y-3"
           onSubmit={(e) => {

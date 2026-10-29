@@ -43,7 +43,7 @@ export default function ReceptionProceduresPage() {
                       <Chip tone={p.kind === 'same_day' ? 'gold' : 'info'}>{p.kind === 'same_day' ? 'Same day' : 'Planned session'}</Chip>
                     </div>
                     <p className="mt-1 text-dense text-muted">
-                      {p.procedureName} · session {p.sessionNumber} · {p.doctorName}
+                      {p.procedureName} · session {p.sessionNumber} · {p.doctorName ?? 'Doctor nahi'}
                     </p>
                     {p.kind === 'same_day' && (
                       <p className={p.paymentOk ? 'mt-1 text-dense text-success' : 'mt-1 text-dense text-danger'}>

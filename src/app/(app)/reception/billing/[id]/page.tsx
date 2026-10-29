@@ -361,7 +361,7 @@ export default function BillingDetailPage() {
             <SectionLabel>Invoice {inv.number}</SectionLabel>
             <h1 className="text-title text-ink">{a.patient.name}</h1>
             <p className="text-body text-muted">
-              {a.doctorName} · {formatDateTime(a.startAt)} · {titleCase(a.type)}
+              {a.doctorName ?? 'Doctor nahi'} · {formatDateTime(a.startAt)} · {titleCase(a.type)}
             </p>
           </div>
           <div className="flex items-center gap-2">
