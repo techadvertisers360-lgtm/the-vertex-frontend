@@ -23,13 +23,15 @@ interface ExistingPatient {
 type PatientChoice = { mode: 'new' } | { mode: 'existing'; id: string } | { mode: 'shared'; reason: string };
 
 /**
- * Book an appointment for a lead (spec §7). The form keeps every entered value on any failure; retries of the
+ * Book an appointment for a lead (spec §7) — or, without a lead, for one of the member's own contacts ("Connection
+ * booking", D-071: name and phone typed here). The form keeps every entered value on any failure; retries of the
  * same payload reuse the same Idempotency-Key, so a timeout can never create two bookings.
  */
-export function BookingDialog({ lead, open, onOpenChange }: { lead: LeadDetail; open: boolean; onOpenChange: (v: boolean) => void }) {
+export function BookingDialog({ lead, open, onOpenChange, onBooked }: { lead?: LeadDetail; open: boolean; onOpenChange: (v: boolean) => void; onBooked?: () => void }) {
   const qc = useQueryClient();
   const keyFor = React.useRef(idempotencyFor()).current;
-  const [name, setName] = React.useState(lead.name);
+  const [name, setName] = React.useState(lead?.name ?? '');
+  const [phone, setPhone] = React.useState('');
   const [whatsappConsent, setWhatsapp] = React.useState(true);
   const [contactConsent, setContact] = React.useState(true);
   const [doctorId, setDoctorId] = React.useState('');
@@ -43,12 +45,13 @@ export function BookingDialog({ lead, open, onOpenChange }: { lead: LeadDetail; 
   const [errors, setErrors] = React.useState<Record<string, string>>({});
 
   const m = useMutation({
-    mutationFn: (body: unknown) => post<{ appointment: { id: string; startAt: string } }>(`/lead/leads/${lead.id}/book`, body, keyFor(body)),
+    mutationFn: (body: unknown) => post<{ appointment: { id: string; startAt: string } }>(lead ? `/lead/leads/${lead.id}/book` : '/lead/connection-book', body, keyFor(body)),
     onSuccess: (r) => {
       toast.success(`Appointment confirm — ${formatDateTime(r.appointment.startAt)}`, { description: 'Patient aur Doctor ko booking details bhej di gayi hain.' });
       void qc.invalidateQueries({ queryKey: ['lead'] });
       void qc.invalidateQueries({ queryKey: ['scheduling', 'slots'] });
       onOpenChange(false);
+      onBooked?.();
     },
     onError: (e) => {
       if (!(e instanceof ApiError)) return;
@@ -67,6 +70,7 @@ export function BookingDialog({ lead, open, onOpenChange }: { lead: LeadDetail; 
     e.preventDefault();
     const errs: Record<string, string> = {};
     if (choice.mode !== 'existing' && name.trim().length < 2) errs.name = 'Patient ka naam likhein';
+    if (!lead && phone.replace(/\D/g, '').length < 10) errs.phone = 'Phone number likhein';
     if (!doctorId) errs.doctor = 'Doctor chunein';
     if (type === 'PROCEDURE' && !serviceId) errs.service = 'Procedure chunein';
     if (!slot) errs.slot = 'Slot chunein';
@@ -74,10 +78,11 @@ export function BookingDialog({ lead, open, onOpenChange }: { lead: LeadDetail; 
     setErrors(errs);
     if (Object.keys(errs).length) return;
     setConflict(null);
+    const typedPhone = lead ? {} : { phone: phone.trim() };
     const patient =
       choice.mode === 'existing'
-        ? { existingPatientId: choice.id }
-        : { name: name.trim(), whatsappConsent, contactConsent, ...(choice.mode === 'shared' ? { confirmSharedPhone: { reason: choice.reason.trim() } } : {}) };
+        ? { existingPatientId: choice.id, ...typedPhone }
+        : { name: name.trim(), ...typedPhone, whatsappConsent, contactConsent, ...(choice.mode === 'shared' ? { confirmSharedPhone: { reason: choice.reason.trim() } } : {}) };
     m.mutate({ patient, doctorId, type, serviceId: serviceId || undefined, reason: reason.trim() || undefined, start: slot!.start, roomId: slot!.roomId });
   };
 
@@ -85,7 +90,11 @@ export function BookingDialog({ lead, open, onOpenChange }: { lead: LeadDetail; 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent wide title="Book appointment" description={`${lead.name} · ${formatPhone(lead.phone)} · ${lead.sheet.campaign}`}>
+      <DialogContent
+        wide
+        title={lead ? 'Book appointment' : 'Connection booking'}
+        description={lead ? `${lead.name} · ${formatPhone(lead.phone)} · ${lead.sheet.campaign}` : 'Apne jaan-pehchan wale patient ka naam aur phone likhein, Doctor ki available timing dekh kar booking karein.'}
+      >
         <form onSubmit={submit} className="space-y-5" noValidate>
           <section className="space-y-3">
             <SectionLabel>Patient</SectionLabel>
@@ -115,9 +124,26 @@ export function BookingDialog({ lead, open, onOpenChange }: { lead: LeadDetail; 
                 <Field label="Patient name" required error={errors.name} htmlFor="pname">
                   <Input id="pname" value={name} onChange={(e) => setName(e.target.value)} aria-invalid={!!errors.name} />
                 </Field>
-                <Field label="Phone" htmlFor="pphone" hint="Lead ka number">
-                  <Input id="pphone" value={formatPhone(lead.phone)} readOnly />
-                </Field>
+                {lead ? (
+                  <Field label="Phone" htmlFor="pphone" hint="Lead ka number">
+                    <Input id="pphone" value={formatPhone(lead.phone)} readOnly />
+                  </Field>
+                ) : (
+                  <Field label="Phone" required error={errors.phone} htmlFor="pphone">
+                    <Input
+                      id="pphone"
+                      inputMode="tel"
+                      placeholder="03XX XXXXXXX"
+                      value={phone}
+                      onChange={(e) => {
+                        setPhone(e.target.value);
+                        setDuplicates(null);
+                        setChoice({ mode: 'new' });
+                      }}
+                      aria-invalid={!!errors.phone}
+                    />
+                  </Field>
+                )}
                 <div className="flex flex-wrap gap-x-6 sm:col-span-2">
                   <Checkbox label="WhatsApp messages ki ijazat" checked={whatsappConsent} onChange={(e) => setWhatsapp(e.target.checked)} />
                   <Checkbox label="Contact consent" checked={contactConsent} onChange={(e) => setContact(e.target.checked)} />
