@@ -43,7 +43,7 @@ export function SuggestionButtons({ suggestions, onPick }: { suggestions: Sugges
         <li key={s.start}>
           <button type="button" onClick={() => onPick(s)} className="w-full rounded-control border border-brand-medium bg-surface px-3 py-2 text-left hover:bg-brand-light">
             <span className="block text-dense font-semibold text-brand">
-              {formatDay(s.start)} · {formatTime(s.start)} {s.roomCode ? `· ${s.roomCode}` : ''}
+              {formatDay(s.start)} · {formatTime(s.start)}
             </span>
             <span className="block text-[12px] text-muted">{reasonText(s.reason)}</span>
           </button>
@@ -62,7 +62,8 @@ export interface SlotValue {
 /**
  * Date + free-slot grid for one Doctor and appointment type. Only bookable slots are shown; leave and
  * "Manager approval pending" alternate hours are labelled; when the day is empty the next available
- * date/time suggestions are offered. The backend re-checks everything at final save.
+ * date/time suggestions are offered. The backend re-checks everything at final save. The room is not shown while
+ * booking (D-070): the slot only proves a compatible room is free; Reception assigns the actual room at check-in.
  */
 export function SlotPicker({
   doctorId,
@@ -140,7 +141,6 @@ export function SlotPicker({
                       )}
                     >
                       {formatTime(s.start)}
-                      {s.roomCode && <span className={cn('ml-1 text-[11px] font-normal', selected ? 'text-on-brand-muted' : 'text-muted')}>{s.roomCode}</span>}
                     </button>
                   );
                 })}

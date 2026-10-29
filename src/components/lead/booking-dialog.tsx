@@ -166,7 +166,7 @@ export function BookingDialog({ lead, open, onOpenChange }: { lead: LeadDetail; 
               Cancel
             </Button>
             <Button type="submit" loading={m.isPending}>
-              {slot ? `Confirm · ${formatDateTime(slot.start)}${slot.roomCode ? ` · ${slot.roomCode}` : ''}` : 'Confirm booking'}
+              {slot ? `Confirm · ${formatDateTime(slot.start)}` : 'Confirm booking'}
             </Button>
           </div>
         </form>
