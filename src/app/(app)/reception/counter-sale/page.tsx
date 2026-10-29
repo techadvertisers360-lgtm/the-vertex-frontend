@@ -243,6 +243,11 @@ export default function CounterSalePage() {
   const banks = useQuery({ queryKey: ['bank-accounts'], queryFn: () => get<{ items: Bank[] }>('/reception/bank-accounts') });
   const [lines, setLines] = React.useState<Line[]>([]);
   const [buyer, setBuyer] = React.useState({ name: '', phone: '' });
+  // Opened from the walk-in desk (D-075): the patient's name and phone come in the link.
+  React.useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get('name') || sp.get('phone')) setBuyer({ name: sp.get('name') ?? '', phone: sp.get('phone') ?? '' });
+  }, []);
   const [pay, setPay] = React.useState({ cash: '', bank: '', bankAccountId: '', reference: '' });
   const [receipt, setReceipt] = React.useState<Receipt | null>(null);
   const keyFor = React.useRef(idempotencyFor());
