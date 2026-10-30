@@ -27,7 +27,12 @@ export interface RequestOptions {
   idempotencyKey?: string;
   /** internal: do not attempt refresh */
   noRefresh?: boolean;
+  /** internal: how many times a busy-database read was already retried */
+  busyRetry?: number;
 }
+
+/** Waits before retrying a read the server refused because the database was busy (D-077): 1 s, then 2.5 s. */
+const BUSY_RETRY_MS = [1000, 2500];
 
 function buildUrl(path: string, query?: Query): string {
   const url = path.startsWith('/api') ? path : `/api${path}`;
@@ -82,6 +87,14 @@ export async function api<T = unknown>(path: string, opts: RequestOptions = {}):
   if (res.status === 401 && !opts.noRefresh && !path.includes('/auth/')) {
     if (code === 'UNAUTHENTICATED' && (await refreshSession())) return api<T>(path, { ...opts, noRefresh: true });
     signalExpired(code);
+  }
+  // Database briefly full (503 DB_BUSY): reads are retried a little later. Writes never are — the user retries
+  // them, and their Idempotency-Key keeps a retry from saving twice.
+  const method = opts.method ?? (opts.body !== undefined ? 'POST' : 'GET');
+  const tries = opts.busyRetry ?? 0;
+  if (res.status === 503 && code === 'DB_BUSY' && method === 'GET' && tries < BUSY_RETRY_MS.length) {
+    await new Promise((r) => setTimeout(r, BUSY_RETRY_MS[tries]));
+    return api<T>(path, { ...opts, busyRetry: tries + 1 });
   }
   if (res.status === 403 && code === 'GEOFENCE_REQUIRED' && typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(GEOFENCE_EVENT));
   if (res.status >= 500 || res.status === 502 || res.status === 504) {

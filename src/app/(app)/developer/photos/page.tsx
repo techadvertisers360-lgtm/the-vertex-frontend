@@ -26,6 +26,9 @@ interface Photo {
   createdAt: string;
   uploadedBy: string | null;
   uploadedByRole: string | null;
+  /** How to open it; null url in 'signed' mode means ask /files/:id/url (D-077). */
+  url: string | null;
+  mode: FileUrl['mode'];
 }
 interface PhotoPage {
   total: number;
@@ -56,9 +59,32 @@ const routeLabel = (r: UploadRoute) => ROUTES.find((x) => x.value === r)?.label 
 
 const fileUrl = (id: string) => get<FileUrl>(`/files/${id}/url`);
 
+/** The list already says how to open most photos; only signed-URL mode needs a /url request. */
+const openPhoto = (p: Photo): Promise<FileUrl> => (p.mode === 'signed' ? fileUrl(p.id) : Promise.resolve({ url: p.url, mode: p.mode }));
+
+/**
+ * At most 4 pictures load at a time (D-077): each one is a request to our server, and a whole page of them at once
+ * opened more database connections than the database allows.
+ */
+const MAX_LOADING = 4;
+let loading = 0;
+const waiting: (() => void)[] = [];
+function takeSlot(): Promise<void> {
+  if (loading < MAX_LOADING) {
+    loading++;
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => waiting.push(resolve));
+}
+function releaseSlot() {
+  const next = waiting.shift();
+  if (next) next();
+  else loading--;
+}
+
 /** Save one photo to the computer. Our proxy sends it as a download; other URLs are fetched as a blob. */
 async function downloadPhoto(p: Photo) {
-  const r = await fileUrl(p.id);
+  const r = await openPhoto(p);
   if (!r.url) throw new Error(r.mode === 'stub' ? 'Dev stub — asli file store nahi hui' : 'File available nahi');
   const a = document.createElement('a');
   a.download = p.fileName;
@@ -77,9 +103,57 @@ async function downloadPhoto(p: Photo) {
   }
 }
 
+/** Loads only once on screen, then waits for a free slot; the slot is freed when the picture loads or fails. */
 function Thumb({ p }: { p: Photo }) {
-  const q = useQuery({ queryKey: ['developer', 'photo-url', p.id], queryFn: () => fileUrl(p.id), staleTime: 4 * 60_000 });
-  if (q.isPending) return <Skeleton className="aspect-square w-full" />;
+  const box = React.useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = React.useState(false);
+  const [src, setSrc] = React.useState<string | null>(null);
+  const held = React.useRef(false);
+  const q = useQuery({ queryKey: ['developer', 'photo-url', p.id], queryFn: () => openPhoto(p), staleTime: 4 * 60_000, enabled: visible });
+
+  React.useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const io = new IntersectionObserver(([e]) => {
+      if (e?.isIntersecting) {
+        setVisible(true);
+        io.disconnect();
+      }
+    }, { rootMargin: '200px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  const url = q.data?.url ?? null;
+  React.useEffect(() => {
+    if (!url) return;
+    let cancelled = false;
+    void takeSlot().then(() => {
+      if (cancelled) return releaseSlot();
+      held.current = true;
+      setSrc(url);
+    });
+    return () => {
+      cancelled = true;
+      if (held.current) {
+        held.current = false;
+        releaseSlot();
+      }
+    };
+  }, [url]);
+  const done = () => {
+    if (held.current) {
+      held.current = false;
+      releaseSlot();
+    }
+  };
+
+  if (!visible || q.isPending || (url && !src))
+    return (
+      <div ref={box}>
+        <Skeleton className="aspect-square w-full" />
+      </div>
+    );
   if (!q.data?.url)
     return (
       <div className="flex aspect-square w-full flex-col items-center justify-center gap-1 bg-canvas text-[12px] text-muted">
@@ -90,7 +164,7 @@ function Thumb({ p }: { p: Photo }) {
   return (
     <a href={q.data.url} target="_blank" rel="noopener noreferrer" title="Bari photo kholen">
       {/* eslint-disable-next-line @next/next/no-img-element -- private, short-lived URLs; next/image cannot optimise them */}
-      <img src={q.data.url} alt={p.fileName} loading="lazy" className="aspect-square w-full object-cover" />
+      <img src={src ?? q.data.url} alt={p.fileName} onLoad={done} onError={done} className="aspect-square w-full object-cover" />
     </a>
   );
 }
@@ -103,7 +177,7 @@ export default function DeveloperPhotosPage() {
   const [bulk, setBulk] = React.useState<{ done: number; total: number } | null>(null);
   const q = useInfiniteQuery({
     queryKey: ['developer', 'photos', route, from, to],
-    queryFn: ({ pageParam }) => get<PhotoPage>('/developer/photos', { route: route || undefined, from: from || undefined, to: to || undefined, cursor: pageParam, limit: 60 }),
+    queryFn: ({ pageParam }) => get<PhotoPage>('/developer/photos', { route: route || undefined, from: from || undefined, to: to || undefined, cursor: pageParam, limit: 24 }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
   });
@@ -128,7 +202,7 @@ export default function DeveloperPhotosPage() {
     let cursor = q.data?.pages[q.data.pages.length - 1]?.nextCursor ?? null;
     try {
       while (cursor) {
-        const page: PhotoPage = await get<PhotoPage>('/developer/photos', { route: route || undefined, from: from || undefined, to: to || undefined, cursor, limit: 200 });
+        const page: PhotoPage = await get<PhotoPage>('/developer/photos', { route: route || undefined, from: from || undefined, to: to || undefined, cursor, limit: 100 });
         list = [...list, ...page.items];
         cursor = page.nextCursor;
       }
