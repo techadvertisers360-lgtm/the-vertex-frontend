@@ -8,7 +8,7 @@ import { ArrowLeft, FileText, ImageOff, Pencil } from 'lucide-react';
 import { ApiError, get, patch } from '@/lib/api';
 import { formatDate, formatDateTime, formatTime } from '@/lib/time';
 import { vitalsSummary } from '@/lib/doctor-types';
-import { formatPhone, formatRs, titleCase } from '@/lib/utils';
+import { cn, formatPhone, formatRs, titleCase } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, PageHeader, SectionLabel, StatTile } from '@/components/ui/card';
 import { Chip, StatusChip } from '@/components/ui/chip';
@@ -206,13 +206,15 @@ export function PatientRecordsList({ base }: { base: string }) {
 
 // ───────────── Record ─────────────
 
-/** A clinical photo shown inline; it loads through /api/files (scope-checked, audited). */
-function PhotoThumb({ attachmentId, label }: { attachmentId: string; label: string }) {
+/** A clinical photo or video shown inline; it loads through /api/files (scope-checked, audited). */
+function PhotoThumb({ attachmentId, label, video = false }: { attachmentId: string; label: string; video?: boolean }) {
   const q = useQuery({ queryKey: ['file-url', attachmentId], queryFn: () => get<{ url: string | null; mode: string }>(`/files/${attachmentId}/url`), staleTime: 4 * 60_000 });
   return (
-    <figure className="w-36 overflow-hidden rounded-card border border-line bg-surface">
+    <figure className={cn('overflow-hidden rounded-card border border-line bg-surface', video ? 'w-64' : 'w-36')}>
       {q.isPending ? (
         <Skeleton className="aspect-square w-full" />
+      ) : q.data?.url && video ? (
+        <video src={q.data.url} controls preload="metadata" className="aspect-video w-full bg-ink" />
       ) : q.data?.url ? (
         <a href={q.data.url} target="_blank" rel="noopener noreferrer" title="Bari photo kholen">
           {/* eslint-disable-next-line @next/next/no-img-element -- private, short-lived URLs; next/image cannot optimise them */}
@@ -246,11 +248,13 @@ function Docs({ docs }: { docs: Doc[] }) {
 const dt = (d: string | null) => (d ? formatTime(d) : '—');
 
 function ProcedureBlock({ p }: { p: Procedure }) {
-  const photos = [
-    p.beforePhotoAttachmentId ? { id: p.beforePhotoAttachmentId, label: 'Before' } : null,
-    p.afterPhotoAttachmentId ? { id: p.afterPhotoAttachmentId, label: 'After' } : null,
-  ].filter((x): x is { id: string; label: string } => !!x);
-  const shown = new Set([p.beforePhotoAttachmentId, p.afterPhotoAttachmentId]);
+  // Every before / after photo and video of the procedure, numbered in upload order (D-082).
+  const media = (route: 'beforePhoto' | 'afterPhoto', label: string) => {
+    const list = p.documents.filter((d) => d.route === route);
+    return list.map((d, i) => ({ id: d.id, video: d.mime.startsWith('video/'), label: list.length > 1 ? `${label} ${i + 1}` : label }));
+  };
+  const photos = [...media('beforePhoto', 'Before'), ...media('afterPhoto', 'After')];
+  const shown = new Set(photos.map((ph) => ph.id));
   return (
     <div className="rounded-card bg-canvas p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -280,7 +284,7 @@ function ProcedureBlock({ p }: { p: Procedure }) {
       {photos.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-2">
           {photos.map((ph) => (
-            <PhotoThumb key={ph.id} attachmentId={ph.id} label={ph.label} />
+            <PhotoThumb key={ph.id} attachmentId={ph.id} label={ph.label} video={ph.video} />
           ))}
         </div>
       )}

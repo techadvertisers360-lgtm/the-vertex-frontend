@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { AlertTriangle, ArrowLeft, Check, Plus, Send, Trash2 } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Check, Image as ImageIcon, Plus, Send, Trash2, Video } from 'lucide-react';
 import { ApiError, get, idempotencyFor, post } from '@/lib/api';
 import { useRealtime } from '@/lib/realtime';
 import { formatTime } from '@/lib/time';
@@ -44,16 +44,56 @@ function Stepper({ current }: { current: ProcedureStep }) {
   );
 }
 
-/** Photo step: upload, or record the patient's refusal (spec §4: skip only with a reason). */
-function PhotoStep({ task, which, run }: { task: ProcedureDetail; which: 'before' | 'after'; run: (path: string, body?: object) => void }) {
+/**
+ * Photo step: upload one or more photos / videos, then save; or record the patient's refusal (spec §4: skip only
+ * with a reason). Files already uploaded to this step (e.g. before a page reload) are listed and saved too (D-082).
+ */
+function PhotoStep({ task, which, run, pending }: { task: ProcedureDetail; which: 'before' | 'after'; run: (path: string, body?: object) => void; pending: boolean }) {
   const [declined, setDeclined] = React.useState(false);
   const [reason, setReason] = React.useState('');
   const route: UploadRoute = which === 'before' ? 'beforePhoto' : 'afterPhoto';
   const path = `${which}-photo`;
+  const [added, setAdded] = React.useState<{ id: string; fileName: string; mime: string }[]>([]);
+  const files = [...task.uploads.filter((u) => u.route === route), ...added.filter((a) => !task.uploads.some((u) => u.id === a.id))];
+  const videos = files.filter((f) => f.mime.startsWith('video/')).length;
   return (
     <div className="space-y-3">
-      <p className="text-body text-ink">{which === 'before' ? 'Procedure se pehle' : 'Procedure ke baad'} photo lein.</p>
-      {!declined && <UploadButton route={route} recordType="ProcedureTask" recordId={task.id} label={`Upload ${which} photo`} accept="image/*" onUploaded={(attachmentId) => run(path, { attachmentId })} />}
+      <p className="text-body text-ink">{which === 'before' ? 'Procedure se pehle' : 'Procedure ke baad'} photos lein — ek se zyada photos ya video bhi add kar sakte hain.</p>
+      {!declined && (
+        <>
+          {files.length > 0 && (
+            <ul className="space-y-1 text-dense">
+              {files.map((f, i) => (
+                <li key={f.id} className="flex items-center justify-between gap-2">
+                  <span className="flex min-w-0 items-center gap-2">
+                    {f.mime.startsWith('video/') ? <Video className="size-4 shrink-0 text-brand-medium" aria-hidden /> : <ImageIcon className="size-4 shrink-0 text-brand-medium" aria-hidden />}
+                    <span className="truncate">
+                      {i + 1}. {f.fileName}
+                    </span>
+                  </span>
+                  <ViewFileButton attachmentId={f.id} />
+                </li>
+              ))}
+            </ul>
+          )}
+          <UploadButton
+            route={route}
+            recordType="ProcedureTask"
+            recordId={task.id}
+            label={files.length ? 'Aur photo / video add karein' : `Upload ${which} photos / video`}
+            accept="image/*,video/*"
+            multiple
+            onUploaded={(id, file) => setAdded((a) => [...a, { id, fileName: file.name, mime: file.type || 'application/octet-stream' }])}
+          />
+          {files.length > 0 && (
+            <Button type="button" loading={pending} onClick={() => run(path, { attachmentIds: files.map((f) => f.id) })}>
+              Save {files.length - videos > 0 ? `${files.length - videos} photo` : ''}
+              {files.length - videos > 0 && videos > 0 ? ' + ' : ''}
+              {videos > 0 ? `${videos} video` : ''} · aage barhein
+            </Button>
+          )}
+        </>
+      )}
       <Checkbox label="Patient ne photo se inkar kiya" checked={declined} onChange={(e) => setDeclined(e.target.checked)} />
       {declined && (
         <form
@@ -186,7 +226,7 @@ function CurrentStep({ task, run, pending }: { task: ProcedureDetail; run: (path
         </div>
       );
     case 'BEFORE_PHOTO':
-      return <PhotoStep task={task} which="before" run={run} />;
+      return <PhotoStep task={task} which="before" run={run} pending={pending} />;
     case 'START':
       return (
         <Button onClick={() => run('start')} loading={pending}>
@@ -203,7 +243,7 @@ function CurrentStep({ task, run, pending }: { task: ProcedureDetail; run: (path
         </div>
       );
     case 'AFTER_PHOTO':
-      return <PhotoStep task={task} which="after" run={run} />;
+      return <PhotoStep task={task} which="after" run={run} pending={pending} />;
     case 'ITEMS_USED':
       return <ItemsStep task={task} run={run} />;
     case 'SEND_TO_RECEPTION':

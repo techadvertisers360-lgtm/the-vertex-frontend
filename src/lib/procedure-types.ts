@@ -43,7 +43,7 @@ export interface ProcedureTaskView {
 export interface ProcedureDetail extends ProcedureTaskView {
   /** When the safety net will send the patient to Reception if the button is not pressed (D-034). */
   autoSendAt: string | null;
-  uploads: { id: string; route: string; fileName: string; createdAt: string }[];
+  uploads: { id: string; route: string; fileName: string; mime: string; createdAt: string }[];
   itemsUsed: { itemId: string; name: string; unit: string; quantity: number }[];
   beforePhotoSkipReason: string | null;
   afterPhotoSkipReason: string | null;

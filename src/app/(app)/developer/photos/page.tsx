@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Download, ImageOff } from 'lucide-react';
+import { Download, ImageOff, Video } from 'lucide-react';
 import { ApiError, get } from '@/lib/api';
 import { formatDateTime } from '@/lib/time';
 import { titleCase } from '@/lib/utils';
@@ -125,8 +125,10 @@ function Thumb({ p }: { p: Photo }) {
   }, []);
 
   const url = q.data?.url ?? null;
+  // Videos (D-082) are not loaded as thumbnails — a tile links to the file instead.
+  const isVideo = p.mime.startsWith('video/');
   React.useEffect(() => {
-    if (!url) return;
+    if (!url || isVideo) return;
     let cancelled = false;
     void takeSlot().then(() => {
       if (cancelled) return releaseSlot();
@@ -140,7 +142,7 @@ function Thumb({ p }: { p: Photo }) {
         releaseSlot();
       }
     };
-  }, [url]);
+  }, [url, isVideo]);
   const done = () => {
     if (held.current) {
       held.current = false;
@@ -148,7 +150,7 @@ function Thumb({ p }: { p: Photo }) {
     }
   };
 
-  if (!visible || q.isPending || (url && !src))
+  if (!visible || q.isPending || (url && !src && !isVideo))
     return (
       <div ref={box}>
         <Skeleton className="aspect-square w-full" />
@@ -160,6 +162,13 @@ function Thumb({ p }: { p: Photo }) {
         <ImageOff className="size-5" aria-hidden />
         {q.data?.mode === 'stub' ? 'Dev stub' : 'Nahi khuli'}
       </div>
+    );
+  if (isVideo)
+    return (
+      <a href={q.data.url} target="_blank" rel="noopener noreferrer" title="Video kholen" className="flex aspect-square w-full flex-col items-center justify-center gap-1 bg-canvas text-[12px] font-semibold text-brand-medium">
+        <Video className="size-6" aria-hidden />
+        Video
+      </a>
     );
   return (
     <a href={q.data.url} target="_blank" rel="noopener noreferrer" title="Bari photo kholen">
