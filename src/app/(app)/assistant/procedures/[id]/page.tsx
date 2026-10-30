@@ -13,11 +13,12 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, SectionLabel } from '@/components/ui/card';
 import { Chip } from '@/components/ui/chip';
-import { Checkbox, Field, Input, Notice, Select, Textarea } from '@/components/ui/form';
+import { Checkbox, Field, Input, Notice, Textarea } from '@/components/ui/form';
 import { ErrorState, LoadingRows } from '@/components/ui/states';
 import { UploadButton, type UploadRoute } from '@/components/ui/upload';
 import { ViewFileButton } from '@/components/ui/file-view';
 import { ReasonDialog } from '@/components/reception/dialogs';
+import { SearchSelect } from '@/components/booking/slot-picker';
 
 const idx = (s: ProcedureStep) => (s === 'DONE' ? STEPS.length : STEPS.findIndex((x) => x.step === s));
 
@@ -108,14 +109,16 @@ function ItemsStep({ task, run }: { task: ProcedureDetail; run: (path: string, b
             return (
               <div key={i} className="grid grid-cols-[minmax(0,1fr)_96px_auto] items-end gap-2">
                 <Field label={i === 0 ? 'Item' : ''} htmlFor={`item-${i}`}>
-                  <Select id={`item-${i}`} value={l.itemId} onChange={(e) => setLines((ls) => ls.map((x, j) => (j === i ? { ...x, itemId: e.target.value } : x)))}>
-                    <option value="">Item chunein</option>
-                    {items.map((it) => (
-                      <option key={it.id} value={it.id} disabled={it.usableQty <= 0 || lines.some((x, j) => j !== i && x.itemId === it.id)}>
-                        {it.name} ({it.usableQty} {it.baseUnit})
-                      </option>
-                    ))}
-                  </Select>
+                  <SearchSelect
+                    id={`item-${i}`}
+                    value={l.itemId}
+                    emptyLabel="Item chunein — naam likh kar search karein"
+                    // out of stock or already on another line → not offered
+                    options={items
+                      .filter((it) => it.id === l.itemId || (it.usableQty > 0 && !lines.some((x, j) => j !== i && x.itemId === it.id)))
+                      .map((it) => ({ id: it.id, name: `${it.name} (${it.usableQty} ${it.baseUnit})` }))}
+                    onChange={(v) => setLines((ls) => ls.map((x, j) => (j === i ? { ...x, itemId: v } : x)))}
+                  />
                 </Field>
                 <Field label={i === 0 ? `Qty${item ? ` (${item.baseUnit})` : ''}` : ''} htmlFor={`qty-${i}`}>
                   <Input id={`qty-${i}`} inputMode="numeric" value={l.qty} onChange={(e) => setLines((ls) => ls.map((x, j) => (j === i ? { ...x, qty: e.target.value.replace(/\D/g, '') } : x)))} />

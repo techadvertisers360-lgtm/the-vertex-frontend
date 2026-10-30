@@ -9,10 +9,11 @@ import type { StockForUsage } from '@/lib/procedure-types';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, PageHeader } from '@/components/ui/card';
 import { StatusChip } from '@/components/ui/chip';
-import { Field, Input, Notice, Select, Textarea } from '@/components/ui/form';
+import { Field, Input, Notice, Textarea } from '@/components/ui/form';
 import { ErrorState, LoadingRows, QueryState } from '@/components/ui/states';
 import { UploadButton } from '@/components/ui/upload';
 import { useSession } from '@/lib/session';
+import { SearchSelect } from '@/components/booking/slot-picker';
 
 export interface MyDemand {
   id: string;
@@ -72,14 +73,13 @@ export function DemandForm() {
             return (
               <div key={i} className="grid grid-cols-[minmax(0,1fr)_96px_auto] items-end gap-2">
                 <Field label={i === 0 ? 'Item' : ''} htmlFor={`d-item-${i}`}>
-                  <Select id={`d-item-${i}`} value={l.itemId} onChange={(e) => setLines((ls) => ls.map((x, j) => (j === i ? { ...x, itemId: e.target.value } : x)))}>
-                    <option value="">Item chunein</option>
-                    {items.map((it) => (
-                      <option key={it.id} value={it.id} disabled={lines.some((x, j) => j !== i && x.itemId === it.id)}>
-                        {it.name} — abhi {it.usableQty} {it.baseUnit}
-                      </option>
-                    ))}
-                  </Select>
+                  <SearchSelect
+                    id={`d-item-${i}`}
+                    value={l.itemId}
+                    emptyLabel="Item chunein — naam likh kar search karein"
+                    options={items.filter((it) => !lines.some((x, j) => j !== i && x.itemId === it.id)).map((it) => ({ id: it.id, name: `${it.name} — abhi ${it.usableQty} ${it.baseUnit}` }))}
+                    onChange={(v) => setLines((ls) => ls.map((x, j) => (j === i ? { ...x, itemId: v } : x)))}
+                  />
                 </Field>
                 <Field label={i === 0 ? `Qty${item ? ` (${item.baseUnit})` : ''}` : ''} htmlFor={`d-qty-${i}`}>
                   <Input id={`d-qty-${i}`} inputMode="numeric" value={l.qty} onChange={(e) => setLines((ls) => ls.map((x, j) => (j === i ? { ...x, qty: e.target.value.replace(/\D/g, '') } : x)))} />
@@ -244,14 +244,7 @@ export function DamageForm({ written }: { written?: boolean }) {
         ) : (
           <div className="grid grid-cols-[minmax(0,1fr)_96px] gap-2">
             <Field label="Item" htmlFor="dm-i">
-              <Select id="dm-i" value={itemId} onChange={(e) => setItemId(e.target.value)}>
-                <option value="">Item chunein</option>
-                {stock.data?.items.map((it) => (
-                  <option key={it.id} value={it.id}>
-                    {it.name}
-                  </option>
-                ))}
-              </Select>
+              <SearchSelect id="dm-i" value={itemId} emptyLabel="Item chunein — naam likh kar search karein" options={(stock.data?.items ?? []).map((it) => ({ id: it.id, name: it.name }))} onChange={setItemId} />
             </Field>
             <Field label="Qty" htmlFor="dm-q">
               <Input id="dm-q" inputMode="numeric" value={qty} onChange={(e) => setQty(e.target.value.replace(/\D/g, ''))} />
