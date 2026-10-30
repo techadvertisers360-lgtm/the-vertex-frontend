@@ -2,23 +2,26 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { ArrowLeft, FileText, ImageOff } from 'lucide-react';
-import { get } from '@/lib/api';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { ArrowLeft, FileText, ImageOff, Pencil } from 'lucide-react';
+import { ApiError, get, patch } from '@/lib/api';
 import { formatDate, formatDateTime, formatTime } from '@/lib/time';
 import { vitalsSummary } from '@/lib/doctor-types';
 import { formatPhone, formatRs, titleCase } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, PageHeader, SectionLabel, StatTile } from '@/components/ui/card';
 import { Chip, StatusChip } from '@/components/ui/chip';
-import { Input } from '@/components/ui/form';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Checkbox, Field, Input, Notice, Select, Textarea } from '@/components/ui/form';
 import { EmptyState, ErrorState, LoadingRows, Skeleton } from '@/components/ui/states';
 import { DataTable } from '@/components/ui/table';
 import { ViewFileButton } from '@/components/ui/file-view';
 
 /**
  * Patient Records for Manager and MD (D-078): every patient, searchable; one patient's whole history A to Z —
- * visits, timeline, vitals, plans, procedures with before/after photos, invoices and payments, feedback. View only.
+ * visits, timeline, vitals, plans, procedures with before/after photos, invoices and payments, feedback. The history is
+ * view only; the patient's own details can be corrected (D-079).
  */
 
 interface PatientRow {
@@ -451,6 +454,130 @@ function VisitCard({ v }: { v: Visit }) {
   );
 }
 
+/** Correct a wrong entry in the patient's details (D-079): name, phone, age, gender, with a reason. */
+function EditPatientButton({ patient }: { patient: PatientRecord['patient'] }) {
+  const qc = useQueryClient();
+  const [open, setOpen] = React.useState(false);
+  const [name, setName] = React.useState(patient.name);
+  const [phone, setPhone] = React.useState(patient.phone);
+  const [age, setAge] = React.useState(patient.ageYears?.toString() ?? '');
+  const [gender, setGender] = React.useState(patient.gender ?? '');
+  const [reason, setReason] = React.useState('');
+  const [dups, setDups] = React.useState<{ id: string; name: string; ageYears: number | null }[] | null>(null);
+  const [shared, setShared] = React.useState(false);
+  const reset = () => {
+    setName(patient.name);
+    setPhone(patient.phone);
+    setAge(patient.ageYears?.toString() ?? '');
+    setGender(patient.gender ?? '');
+    setReason('');
+    setDups(null);
+    setShared(false);
+  };
+  const m = useMutation({
+    mutationFn: () =>
+      patch(`/patient-records/${patient.id}`, {
+        name: name.trim(),
+        phone: phone.trim(),
+        ageYears: age ? Number(age) : null,
+        gender: gender || null,
+        reason: reason.trim(),
+        confirmSharedPhone: shared || undefined,
+      }),
+    onSuccess: () => {
+      toast.success('Patient ki details update ho gayi');
+      void qc.invalidateQueries({ queryKey: ['patient-records'] });
+      setOpen(false);
+    },
+    onError: (e) => {
+      if (e instanceof ApiError && e.code === 'DUPLICATE_PHONE') setDups((e.details as { existing?: { id: string; name: string; ageYears: number | null }[] } | undefined)?.existing ?? []);
+    },
+  });
+  const valid = name.trim().length >= 2 && phone.trim().length >= 7 && reason.trim().length >= 3 && (!dups || shared);
+  return (
+    <>
+      <Button
+        size="sm"
+        variant="secondary"
+        onClick={() => {
+          reset();
+          m.reset();
+          setOpen(true);
+        }}
+      >
+        <Pencil className="size-4" aria-hidden /> Edit details
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent title="Patient details edit" description="Sirf ghalat entry theek karein. Visits, bills aur photos yahan se nahi badalte.">
+          <form
+            className="space-y-3"
+            noValidate
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (valid) m.mutate();
+            }}
+          >
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Name" required htmlFor="ep-name">
+                <Input id="ep-name" value={name} onChange={(e) => setName(e.target.value)} />
+              </Field>
+              <Field label="Phone" required htmlFor="ep-phone">
+                <Input
+                  id="ep-phone"
+                  inputMode="tel"
+                  value={phone}
+                  onChange={(e) => {
+                    setPhone(e.target.value);
+                    setDups(null);
+                    setShared(false);
+                  }}
+                />
+              </Field>
+              <Field label="Age" htmlFor="ep-age">
+                <Input id="ep-age" inputMode="numeric" value={age} onChange={(e) => setAge(e.target.value.replace(/\D/g, '').slice(0, 3))} />
+              </Field>
+              <Field label="Gender" htmlFor="ep-g">
+                <Select id="ep-g" value={gender} onChange={(e) => setGender(e.target.value)}>
+                  <option value="">—</option>
+                  <option value="female">Female</option>
+                  <option value="male">Male</option>
+                  <option value="other">Other</option>
+                </Select>
+              </Field>
+            </div>
+            <Field label="Tabdeeli ki wajah" required htmlFor="ep-reason">
+              <Textarea id="ep-reason" rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Reception ne naam ghalat likha tha" />
+            </Field>
+            {dups && (
+              <div className="space-y-2 rounded-card border border-warning/40 bg-warning-bg p-3">
+                <p className="text-dense font-semibold text-warning">Is number par pehle se patient registered hai:</p>
+                <ul className="text-dense">
+                  {dups.map((d) => (
+                    <li key={d.id}>
+                      <strong>{d.name}</strong>
+                      {d.ageYears ? `, ${d.ageYears} yrs` : ''}
+                    </li>
+                  ))}
+                </ul>
+                <Checkbox label="Haan, yeh alag shakhs hai jo yehi number istemal karta hai" checked={shared} onChange={(e) => setShared(e.target.checked)} />
+              </div>
+            )}
+            {m.error && !(m.error instanceof ApiError && m.error.code === 'DUPLICATE_PHONE') && <Notice>{m.error instanceof ApiError ? m.error.message : 'Save nahi hua — dobara koshish karein'}</Notice>}
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={!valid} loading={m.isPending}>
+                Save
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 export function PatientRecordView({ id, base }: { id: string; base: string }) {
   const q = useQuery({ queryKey: ['patient-records', 'one', id], queryFn: () => get<PatientRecord>(`/patient-records/${id}`) });
   if (q.isPending) return <LoadingRows rows={6} />;
@@ -465,7 +592,8 @@ export function PatientRecordView({ id, base }: { id: string; base: string }) {
         <SectionLabel>Patient record (view only)</SectionLabel>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h1 className="text-title text-ink">{p.name}</h1>
-          <div className="flex flex-wrap gap-1">
+          <div className="flex flex-wrap items-center gap-1">
+            <EditPatientButton patient={p} />
             {s.visits > 1 && <Chip tone="brand">Dobara aaya — {s.visits} visits</Chip>}
             {p.mergedPatients > 0 && <Chip tone="gold">{p.mergedPatients} merged record</Chip>}
           </div>
