@@ -3,6 +3,7 @@ import * as React from 'react';
 import { Upload } from 'lucide-react';
 import { genUploader } from 'uploadthing/client';
 import { ApiError, post } from '@/lib/api';
+import { compressImage } from '@/lib/image-compress';
 import { Button } from './button';
 import { Notice } from './form';
 
@@ -28,36 +29,57 @@ export type UploadRoute =
  */
 const { uploadFiles } = genUploader({ url: '/api/uploadthing', package: 'vertex-health-frontend' });
 
-async function uploadViaUploadThing(route: UploadRoute, file: File, input: { recordType: string; recordId: string }): Promise<string> {
-  // The router type lives in the backend package; the endpoint/input contract is enforced server-side.
-  const res = (await uploadFiles(route as never, { files: [file], input } as never)) as { serverData: { attachmentId: string } | null }[];
-  const id = res[0]?.serverData?.attachmentId;
-  if (!id) throw new Error('Upload ho gaya magar server ne attachment confirm nahi kiya. Dobara koshish karein.');
-  return id;
-}
-
-const UPLOAD_TIMEOUT_MS = 60_000;
-/** Videos are larger: before/after steps accept up to 64MB with a longer timeout (D-082). */
-const VIDEO_TIMEOUT_MS = 5 * 60_000;
+/** No bytes moving for this long means a stalled connection. A slow upload that is still moving is never cut off. */
+const STALL_TIMEOUT_MS = 60_000;
+/** Files sent at the same time when several are picked (D-083). */
+const UPLOAD_CONCURRENCY = 3;
 const MB = 1024 * 1024;
 const isVideo = (f: File) => f.type.startsWith('video/');
+const isImage = (f: File) => f.type.startsWith('image/');
 const TIMEOUT_MESSAGE = 'Upload mein bohat dair ho gayi — internet / network check karein aur dobara koshish karein.';
 
-/** Never leave the button spinning: a stalled storage connection surfaces as a retryable error. */
-function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error(TIMEOUT_MESSAGE)), ms);
-    p.then(
-      (v) => {
-        clearTimeout(t);
-        resolve(v);
-      },
-      (e: unknown) => {
-        clearTimeout(t);
-        reject(e instanceof Error ? e : new Error(String(e)));
-      },
-    );
+async function uploadViaUploadThing(
+  route: UploadRoute,
+  file: File,
+  input: { recordType: string; recordId: string },
+  onLoaded: (bytes: number) => void,
+): Promise<string> {
+  const abort = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let rejectStalled: (e: Error) => void = () => undefined;
+  // Never leave the button spinning: a stalled storage connection surfaces as a retryable error.
+  const stalled = new Promise<never>((_, reject) => {
+    rejectStalled = reject;
   });
+  const armStallTimer = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      rejectStalled(new Error(TIMEOUT_MESSAGE));
+      abort.abort();
+    }, STALL_TIMEOUT_MS);
+  };
+  armStallTimer();
+  const upload = uploadFiles(
+    // The router type lives in the backend package; the endpoint/input contract is enforced server-side.
+    route as never,
+    {
+      files: [file],
+      input,
+      signal: abort.signal,
+      onUploadProgress: ({ loaded }: { loaded: number }) => {
+        armStallTimer();
+        onLoaded(loaded);
+      },
+    } as never,
+  ) as Promise<{ serverData: { attachmentId: string } | null }[]>;
+  try {
+    const res = await Promise.race([upload, stalled]);
+    const id = res[0]?.serverData?.attachmentId;
+    if (!id) throw new Error('Upload ho gaya magar server ne attachment confirm nahi kiya. Dobara koshish karein.');
+    return id;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Development fallback when the backend reports uploads unconfigured (no UPLOADTHING_TOKEN, D-009). */
@@ -91,7 +113,7 @@ export function UploadButton({
   recordId: string;
   label: string;
   accept?: string;
-  /** Pick several files at once; each is uploaded in turn and reported through onUploaded. */
+  /** Pick several files at once; up to 3 upload together and each is reported through onUploaded as it finishes. */
   multiple?: boolean;
   onUploaded: (attachmentId: string, file: File) => void;
 }) {
@@ -100,9 +122,9 @@ export function UploadButton({
   const [progress, setProgress] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
-  const uploadOne = async (file: File) => {
+  const uploadOne = async (file: File, onLoaded: (bytes: number) => void) => {
     try {
-      return await withTimeout(uploadViaUploadThing(route, file, { recordType, recordId }), isVideo(file) ? VIDEO_TIMEOUT_MS : UPLOAD_TIMEOUT_MS);
+      return await uploadViaUploadThing(route, file, { recordType, recordId }, onLoaded);
     } catch (e) {
       const unconfigured = e instanceof Error && /UPLOADS_NOT_CONFIGURED|503/.test(e.message);
       // The dev stub is never used by a production build, except the e2e build (NEXT_PUBLIC_UPLOAD_STUB=1) against a
@@ -116,21 +138,48 @@ export function UploadButton({
     const files = [...(list ?? [])];
     if (!files.length) return;
     setError(null);
-    const tooBig = files.find((f) => f.size > (isVideo(f) ? 64 : 8) * MB);
+    // Photos are checked after compression, because a large phone photo usually fits once it has been shrunk.
+    const tooBig = files.find((f) => !isImage(f) && f.size > (isVideo(f) ? 64 : 8) * MB);
     if (tooBig) {
       if (input.current) input.current.value = '';
       return setError(isVideo(tooBig) ? `${tooBig.name}: video 64MB se choti honi chahiye.` : `${tooBig.name}: file 8MB se choti honi chahiye.`);
     }
     setBusy(true);
     setProgress('');
-    try {
-      // One at a time: uploads that already finished are kept even if a later one fails.
-      for (const [i, file] of files.entries()) {
-        setProgress(files.length > 1 ? ` ${i + 1}/${files.length}` : '');
-        onUploaded(await uploadOne(file), file);
+    const percents = files.map(() => 0);
+    let finished = 0;
+    const showProgress = () => {
+      const percent = Math.round(percents.reduce((a, b) => a + b, 0) / files.length);
+      if (percent >= 100) return setProgress(' — save ho raha hai');
+      setProgress(`${files.length > 1 ? ` ${finished}/${files.length}` : ''} ${percent}%`);
+    };
+    const queue = [...files.entries()];
+    let firstError: unknown;
+    const worker = async () => {
+      // A failure stops new files from starting; uploads that finished or are already moving are kept.
+      while (firstError === undefined) {
+        const next = queue.shift();
+        if (!next) return;
+        const [i, original] = next;
+        try {
+          const file = await compressImage(original);
+          if (isImage(file) && file.size > 8 * MB) throw new Error(`${file.name}: file 8MB se choti honi chahiye.`);
+          const id = await uploadOne(file, (bytes) => {
+            percents[i] = Math.min(100, (bytes / file.size) * 100);
+            showProgress();
+          });
+          finished += 1;
+          percents[i] = 100;
+          showProgress();
+          onUploaded(id, file);
+        } catch (e) {
+          firstError ??= e;
+        }
       }
-    } catch (e) {
-      setError(friendly(e));
+    };
+    try {
+      await Promise.all(Array.from({ length: Math.min(UPLOAD_CONCURRENCY, files.length) }, worker));
+      if (firstError !== undefined) setError(friendly(firstError));
     } finally {
       setBusy(false);
       setProgress(null);
