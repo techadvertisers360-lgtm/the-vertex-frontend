@@ -1,11 +1,12 @@
 'use client';
 import * as React from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
-import { CalendarPlus, MessageSquareWarning, UserPlus } from 'lucide-react';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { CalendarPlus, History, MessageSquareWarning, UserPlus } from 'lucide-react';
 import { get } from '@/lib/api';
-import { formatDateTime } from '@/lib/time';
-import type { PatientBalance, PatientCard, ReceptionAppt, SearchPatient } from '@/lib/types';
+import { formatDate, formatDateTime } from '@/lib/time';
+import type { PatientBalance, PatientCard, ReceptionAppt } from '@/lib/types';
 import { InstallmentList } from '@/components/reception/installments';
 import { formatPhone, formatRs, titleCase } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -16,6 +17,12 @@ import { EmptyState, ErrorState, LoadingRows } from '@/components/ui/states';
 import { DataTable } from '@/components/ui/table';
 import { ApptActions } from '@/components/reception/appt-actions';
 import { NewPatientDialog, PatientComplaintDialog, ReceptionBookDialog } from '@/components/reception/dialogs';
+
+interface PatientPage {
+  total: number;
+  items: { id: string; name: string; phone: string; visits: number; lastVisitAt: string | null }[];
+  nextCursor: string | null;
+}
 
 function PatientProfile({ id }: { id: string }) {
   const [booking, setBooking] = React.useState(false);
@@ -45,6 +52,11 @@ function PatientProfile({ id }: { id: string }) {
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" asChild>
+              <Link href={`/reception/patients/${p.id}`}>
+                <History className="size-4" /> Open History
+              </Link>
+            </Button>
             <Button variant="secondary" onClick={() => setComplaint(true)}>
               <MessageSquareWarning className="size-4" /> Complaint
             </Button>
@@ -100,9 +112,21 @@ function PatientsView() {
   const router = useRouter();
   const params = useSearchParams();
   const id = params.get('id');
+  const qc = useQueryClient();
+  const [text, setText] = React.useState('');
   const [q, setQ] = React.useState('');
+  React.useEffect(() => {
+    const t = setTimeout(() => setQ(text.trim()), 300);
+    return () => clearTimeout(t);
+  }, [text]);
   const [creating, setCreating] = React.useState(false);
-  const res = useQuery({ queryKey: ['tracker', 'search', q], queryFn: () => get<{ items: SearchPatient[] }>('/reception/search', { q }), enabled: q.trim().length >= 2 });
+  const list = useInfiniteQuery({
+    queryKey: ['patient-records', q],
+    queryFn: ({ pageParam }) => get<PatientPage>('/patient-records', { q: q || undefined, cursor: pageParam }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+  });
+  const rows = list.data?.pages.flatMap((p) => p.items) ?? [];
   const open = (pid: string) => router.push(`/reception/patients?id=${pid}`);
   return (
     <div>
@@ -117,32 +141,57 @@ function PatientsView() {
       />
       <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
         <div className="space-y-3">
-          <Input aria-label="Search patients" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Naam ya phone" />
-          {q.trim().length >= 2 &&
-            (res.isPending ? (
-              <LoadingRows rows={3} />
-            ) : res.isError ? (
-              <ErrorState error={res.error} onRetry={() => res.refetch()} />
-            ) : res.data.items.length === 0 ? (
-              <EmptyState title="Koi patient nahi mila" action={<Button size="sm" onClick={() => setCreating(true)}>New patient</Button>} />
-            ) : (
+          <Input aria-label="Search patients" value={text} onChange={(e) => setText(e.target.value)} placeholder="Naam ya phone" />
+          {list.isPending ? (
+            <LoadingRows rows={5} />
+          ) : list.isError ? (
+            <ErrorState error={list.error} onRetry={() => list.refetch()} />
+          ) : rows.length === 0 ? (
+            <EmptyState title="Koi patient nahi mila" action={<Button size="sm" onClick={() => setCreating(true)}>New patient</Button>} />
+          ) : (
+            <>
+              <p className="text-dense text-muted">{list.data.pages[0]?.total ?? 0} patients</p>
               <ul className="space-y-2">
-                {res.data.items.map((p) => (
-                  <li key={p.id}>
-                    <button onClick={() => open(p.id)} className={`w-full rounded-card border border-line bg-surface p-3 text-left shadow-card hover:bg-brand-light ${id === p.id ? 'bg-brand-light ring-1 ring-brand-medium' : ''}`}>
+                {rows.map((p) => (
+                  <li key={p.id} className={`rounded-card border border-line bg-surface p-3 shadow-card ${id === p.id ? 'bg-brand-light ring-1 ring-brand-medium' : ''}`}>
+                    <button onClick={() => open(p.id)} className="w-full rounded-control text-left hover:text-brand">
                       <p className="font-semibold text-ink">{p.name}</p>
                       <p className="text-dense text-muted">
-                        {formatPhone(p.phone)} · {p.previousVisits} visits
+                        {formatPhone(p.phone)} · {p.visits} visits
+                        {p.lastVisitAt ? ` · Last ${formatDate(p.lastVisitAt)}` : ''}
                       </p>
                     </button>
+                    <Button size="sm" variant="secondary" className="mt-2" asChild>
+                      <Link href={`/reception/patients/${p.id}`} aria-label={`Open History: ${p.name}`}>
+                        <History className="size-4" /> Open History
+                      </Link>
+                    </Button>
                   </li>
                 ))}
               </ul>
-            ))}
+              {list.hasNextPage && (
+                <div className="flex justify-center">
+                  <Button variant="secondary" loading={list.isFetchingNextPage} onClick={() => void list.fetchNextPage()}>
+                    Aur patients
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
         </div>
-        <div>{id ? <PatientProfile id={id} /> : <EmptyState title="Patient chunein" hint="Search karein ya naya patient register karein." />}</div>
+        {/* Below the two-column width the chosen patient comes first; otherwise it would open under the whole list. */}
+        <div className={id ? 'order-first xl:order-none' : ''}>{id ? <PatientProfile id={id} /> : <EmptyState title="Patient chunein" hint="List se patient chunein ya naya patient register karein." />}</div>
       </div>
-      <NewPatientDialog open={creating} onOpenChange={setCreating} initialPhone={/\d{4,}/.test(q) ? q : ''} onCreated={(p) => open(p.id)} onUseExisting={open} />
+      <NewPatientDialog
+        open={creating}
+        onOpenChange={setCreating}
+        initialPhone={/\d{4,}/.test(text) ? text : ''}
+        onCreated={(p) => {
+          void qc.invalidateQueries({ queryKey: ['patient-records'] });
+          open(p.id);
+        }}
+        onUseExisting={open}
+      />
     </div>
   );
 }

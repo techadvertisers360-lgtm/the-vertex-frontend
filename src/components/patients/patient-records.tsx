@@ -582,7 +582,7 @@ function EditPatientButton({ patient }: { patient: PatientRecord['patient'] }) {
   );
 }
 
-export function PatientRecordView({ id, base }: { id: string; base: string }) {
+export function PatientRecordView({ id, base, backLabel = 'Patient Records', canEdit = true }: { id: string; base: string; backLabel?: string; canEdit?: boolean }) {
   const q = useQuery({ queryKey: ['patient-records', 'one', id], queryFn: () => get<PatientRecord>(`/patient-records/${id}`) });
   if (q.isPending) return <LoadingRows rows={6} />;
   if (q.isError) return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
@@ -590,14 +590,14 @@ export function PatientRecordView({ id, base }: { id: string; base: string }) {
   return (
     <div className="space-y-4">
       <Link href={base} className="inline-flex items-center gap-1 text-dense font-semibold text-brand-medium hover:underline">
-        <ArrowLeft className="size-4" aria-hidden /> Patient Records
+        <ArrowLeft className="size-4" aria-hidden /> {backLabel}
       </Link>
       <Card accent="ops">
         <SectionLabel>Patient record (view only)</SectionLabel>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h1 className="text-title text-ink">{p.name}</h1>
           <div className="flex flex-wrap items-center gap-1">
-            <EditPatientButton patient={p} />
+            {canEdit && <EditPatientButton patient={p} />}
             {s.visits > 1 && <Chip tone="brand">Dobara aaya — {s.visits} visits</Chip>}
             {p.mergedPatients > 0 && <Chip tone="gold">{p.mergedPatients} merged record</Chip>}
           </div>
