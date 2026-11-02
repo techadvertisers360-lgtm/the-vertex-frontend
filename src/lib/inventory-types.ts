@@ -127,6 +127,8 @@ export interface DamageRow {
 
 export interface CashDay {
   date: string;
+  leftFromYesterdayPaisa: number;
+  handovers: { id: string; amountPaisa: number; leftAtDeskPaisa: number | null; receivedAt: string | null; from: string | null; to: string | null }[];
   collections: { count: number; totalPaisa: number; cashPaisa: number; cardPaisa: number; bankPaisa: number; chequePaisa: number };
   discountsPaisa: number;
   /** Walk-in pharmacy sales (D-061), already included in collections. */

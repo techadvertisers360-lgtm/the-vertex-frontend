@@ -43,7 +43,8 @@ export interface InvoiceOptions {
   categories: { id: string; name: string }[];
   services: { id: string; name: string; invoiceCategoryId: string | null; defaultPricePaisa: number | null }[];
   bankAccounts: { id: string; name: string; bankName: string }[];
-  tax: { enabled: boolean; rateBp: number };
+  tax: { enabled: boolean; rateBp: number; nonCashRateBp: number | null };
+  requireSlip: boolean;
 }
 
 export type MoneyMethod = 'CASH' | 'CARD' | 'BANK_ONLINE' | 'CHEQUE';

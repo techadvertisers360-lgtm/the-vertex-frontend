@@ -13,7 +13,7 @@ import { cn, formatRs } from '@/lib/utils';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, PageHeader } from '@/components/ui/card';
 import { Checkbox, Field, Input, Notice, Select } from '@/components/ui/form';
-import { emptyPayment, PatientPicker, PaymentFields, paymentBody, paymentComplete, useInvoiceOptions, type PaymentDraft } from './payment-fields';
+import { emptyPayment, PatientPicker, PaymentFields, paymentBody, paymentComplete, slipMissing, useInvoiceOptions, type PaymentDraft } from './payment-fields';
 import { MoneyRow, taxPercent, useInvoiceAccess } from './shared';
 
 interface Line {
@@ -100,7 +100,10 @@ export function InvoiceFormPage() {
   const setLine = (key: string, patch: Partial<Line>) => setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
 
   const tax = options.data?.tax;
-  const rateBp = tax?.enabled && applyTax && tax.rateBp > 0 ? tax.rateBp : null;
+  // The server uses the non-cash rate when one is set and the first payment is not cash (D-090).
+  const mode = options.data?.paymentModes.find((m) => m.id === payment.modeId);
+  const usedRate = tax && tax.nonCashRateBp !== null && payment.amount.trim() && mode && mode.method !== 'CASH' ? tax.nonCashRateBp : (tax?.rateBp ?? 0);
+  const rateBp = tax?.enabled && applyTax && usedRate > 0 ? usedRate : null;
   const discountPaisa = discount.trim() ? rupeesToPaisa(discount) : 0;
   const advancePaisa = useAdvance.trim() ? rupeesToPaisa(useAdvance) : 0;
   const paidPaisa = payment.amount.trim() ? rupeesToPaisa(payment.amount) : 0;
@@ -119,6 +122,7 @@ export function InvoiceFormPage() {
   else if (advancePaisa > Math.max(p.total, 0)) problems.push('Advance, total se zyada istemal nahi ho sakta.');
   if (paidPaisa === null) problems.push('Amount sahi likhein.');
   if ((paidPaisa ?? 0) > 0 && !paymentComplete(payment, options.data)) problems.push('Payment mode aur uski tafseel poori karein.');
+  if ((paidPaisa ?? 0) > 0 && slipMissing(payment, options.data)) problems.push('Payment slip ki photo add karein.');
 
   const needsExtraConfirm = (paidPaisa ?? 0) > 0 && extra > 0;
   const ready = !!patient && p.linesValid && problems.length === 0 && (!needsExtraConfirm || extraToAdvance) && (openVisits.length === 0 || confirmVisit);
@@ -246,7 +250,7 @@ export function InvoiceFormPage() {
                   <Input id="if-advance" inputMode="decimal" value={useAdvance} onChange={(e) => setUseAdvance(e.target.value)} />
                 </Field>
               )}
-              <PaymentFields value={payment} onChange={setPayment} options={options.data} idPrefix="if-pay" amountLabel="Amount paid now (Rs)" />
+              <PaymentFields value={payment} onChange={setPayment} options={options.data} withSlip idPrefix="if-pay" amountLabel="Amount paid now (Rs)" />
               {needsExtraConfirm && <Checkbox label={`Zyada ${formatRs(extra)} patient ke advance mein save karein`} checked={extraToAdvance} onChange={(e) => setExtraToAdvance(e.target.checked)} />}
             </div>
             <dl className="h-fit space-y-1 rounded-control bg-canvas p-3 text-dense">

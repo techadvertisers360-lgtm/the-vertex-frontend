@@ -10,6 +10,7 @@ import { Notice } from './form';
 export type UploadRoute =
   | 'consentForm'
   | 'labReport'
+  | 'paymentSlip'
   | 'officeBill'
   | 'prescriptionPhoto'
   | 'beforePhoto'

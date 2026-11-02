@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tan
 import { toast } from 'sonner';
 import { ApiError } from '@/lib/api';
 import { clinicDate } from '@/lib/time';
+import { Button } from '@/components/ui/button';
 import { Input, Field, Notice } from '@/components/ui/form';
 import { EmptyState, ErrorState, LoadingRows } from '@/components/ui/states';
 
@@ -69,3 +70,24 @@ export function percentToBp(s: string): number | null {
   return bp <= 10_000 ? bp : null;
 }
 export const bpText = (bp: number) => `${bp / 100}%`;
+
+/** Rows as tab-separated text, which pastes straight into Excel. Amounts are plain rupees so Excel can add them. */
+export function CopyForExcel({ rows }: { rows: (string | number | null)[][] }) {
+  return (
+    <Button
+      size="sm"
+      variant="secondary"
+      className="print:hidden"
+      onClick={() => {
+        const text = rows.map((r) => r.map((c) => String(c ?? '').replace(/[\t\r\n]+/g, ' ')).join('\t')).join('\n');
+        void navigator.clipboard.writeText(text).then(
+          () => toast.success('Copy ho gaya: Excel mein paste karein'),
+          () => toast.error('Copy nahi hua. Browser ko ijazat dein.'),
+        );
+      }}
+    >
+      Copy for Excel
+    </Button>
+  );
+}
+export const rupees = (paisa: number | null | undefined) => (paisa === null || paisa === undefined ? '' : paisa / 100);

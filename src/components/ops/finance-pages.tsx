@@ -12,7 +12,7 @@ import { Chip } from '@/components/ui/chip';
 import { Field, Input, Select } from '@/components/ui/form';
 import { EmptyState } from '@/components/ui/states';
 import { DataTable, Segmented } from '@/components/ui/table';
-import { ActError, bpText, Loaded, MonthField, percentToBp, thisMonth, useAct } from './common';
+import { ActError, bpText, CopyForExcel, Loaded, MonthField, percentToBp, rupees, thisMonth, useAct } from './common';
 
 // ───────────── Profit and loss ─────────────
 
@@ -50,7 +50,10 @@ function PnlTab({ month }: { month: string }) {
               <Line label="Total costs" value={d.totalCostsPaisa} strong />
             </Card>
           </div>
-          <Button variant="secondary" className="print:hidden" onClick={() => window.print()}><Printer className="size-4" /> Print or save as PDF</Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" className="print:hidden" onClick={() => window.print()}><Printer className="size-4" /> Print or save as PDF</Button>
+            <CopyForExcel rows={[['Item', 'Rs'], ['Total billed', rupees(d.billedPaisa)], ['Received', rupees(d.receivedPaisa)], ['Still to receive', rupees(d.toReceivePaisa)], ['Doctor share', rupees(d.doctorSharePaisa)], ['Procedure stock', rupees(d.procedureStockPaisa)], ['Pharmacy stock', rupees(d.pharmacyStockPaisa)], ['Salaries', rupees(d.salariesPaisa)], ['Expenses', rupees(d.expensesPaisa)], ['Profit', rupees(d.profitPaisa)]]} />
+          </div>
         </div>
       )}
     </Loaded>
@@ -98,6 +101,7 @@ function ExpensesTab({ month }: { month: string }) {
               <StatTile label="This month" value={formatRs(d.totalPaisa)} hint={`${d.items.length} entries`} />
               {d.byCategory.slice(0, 3).map((c) => <StatTile key={c.category} label={c.category} value={formatRs(c.totalPaisa)} />)}
             </div>
+            {d.items.length > 0 && <CopyForExcel rows={[['Date', 'Type', 'For', 'Rs', 'From', 'By'], ...d.items.map((r) => [r.date, r.category, r.description, rupees(r.amountPaisa), titleCase(r.paidFrom), r.createdBy])]} />}
             {d.items.length === 0 ? <EmptyState title="Is mahine koi kharcha nahi" /> : (
               <DataTable
                 rows={d.items}
@@ -122,7 +126,7 @@ function ExpensesTab({ month }: { month: string }) {
 // ───────────── Doctor ledger ─────────────
 
 interface Rule { ownConsultBp: number; ownProcedureBp: number; clinicConsultBp: number; clinicProcedureBp: number; fixedCostPaisa: number }
-interface LedgerDoctor { doctorId: string; name: string; rule: Rule | null; rows: { invoiceId: string; number: string; patient: string | null; own: boolean; type: string; billPaisa: number; itemCostPaisa: number; fixedCostPaisa: number; bp: number; sharePaisa: number }[]; monthSharePaisa: number; earnedPaisa: number; paidPaisa: number; balancePaisa: number }
+interface LedgerDoctor { doctorId: string; name: string; rule: Rule | null; rows: { invoiceId: string; patientId: string | null; number: string; patient: string | null; own: boolean; type: string; billPaisa: number; itemCostPaisa: number; fixedCostPaisa: number; bp: number; sharePaisa: number }[]; monthSharePaisa: number; earnedPaisa: number; paidPaisa: number; balancePaisa: number }
 
 function DoctorCard({ d }: { d: LedgerDoctor }) {
   const r = d.rule;
@@ -135,6 +139,7 @@ function DoctorCard({ d }: { d: LedgerDoctor }) {
   const [method, setMethod] = React.useState('Cash');
   const bps = [own1, own2, cl1, cl2].map(percentToBp);
   const save = useAct(() => put(`/ops/doctor-ledger/${d.doctorId}/rule`, { ownConsultBp: bps[0], ownProcedureBp: bps[1], clinicConsultBp: bps[2], clinicProcedureBp: bps[3], fixedCostPaisa: rupeesToPaisa(fixed) ?? 0 }), 'Percentages save ho gaye');
+  const own = useAct((v: { patientId: string; own: boolean }) => put(`/ops/doctor-ledger/${d.doctorId}/own-patient`, v), 'Patient update ho gaya');
   const paid = useAct(() => post(`/ops/doctor-ledger/${d.doctorId}/pay`, { amountPaisa: rupeesToPaisa(pay) ?? 0, method }), 'Payment save ho gayi', () => setPay(''));
   return (
     <Card>
@@ -166,6 +171,7 @@ function DoctorCard({ d }: { d: LedgerDoctor }) {
               { key: 'f', header: 'Extra', cell: (x) => formatRs(x.fixedCostPaisa), hideSm: true },
               { key: 'r', header: '%', cell: (x) => bpText(x.bp) },
               { key: 's', header: 'Share', cell: (x) => <span className="font-semibold">{formatRs(x.sharePaisa)}</span> },
+              { key: 'o', header: '', cell: (x) => (x.patientId ? <Button size="sm" variant="ghost" loading={own.isPending} onClick={() => own.mutate({ patientId: x.patientId!, own: !x.own })}>{x.own ? 'Mark clinic patient' : 'Mark own patient'}</Button> : null) },
             ]}
           />
         </div>
@@ -225,7 +231,7 @@ export function MySharePage() {
 
 // ───────────── Payroll ─────────────
 
-interface Staff { id: string; displayName: string; role: string; phone: string | null; salaryPaisa: number; workingDays: number; startDate: string | null; emergencyContact: string | null; personalEmail: string | null; absences: number; lates: number; uniformNotes: number; absenceDeductionPaisa: number; advanceBalancePaisa: number; slip: { number: string; netPaisa: number; absenceDeductionPaisa: number; advanceCutPaisa: number; salaryPaisa: number; extraAbsences: number; month: string; paidAt: string } | null }
+interface Staff { id: string; displayName: string; role: string; phone: string | null; salaryPaisa: number; workingDays: number; startDate: string | null; emergencyContact: string | null; personalEmail: string | null; absences: number; lates: number; uniformNotes: number; warnings: number; points: number; absenceDeductionPaisa: number; advanceBalancePaisa: number; slip: { number: string; netPaisa: number; absenceDeductionPaisa: number; advanceCutPaisa: number; bonusPaisa: number; salaryPaisa: number; extraAbsences: number; month: string; paidAt: string } | null }
 
 function StaffCard({ s, month, onPrint }: { s: Staff; month: string; onPrint: (kind: 'slip' | 'agreement', s: Staff) => void }) {
   const [salary, setSalary] = React.useState(String(s.salaryPaisa / 100));
@@ -234,15 +240,18 @@ function StaffCard({ s, month, onPrint }: { s: Staff; month: string; onPrint: (k
   const [emergency, setEmergency] = React.useState(s.emergencyContact ?? '');
   const [advance, setAdvance] = React.useState('');
   const [cut, setCut] = React.useState('0');
+  const [bonus, setBonus] = React.useState('0');
+  const [points, setPoints] = React.useState('5');
   const save = useAct(() => put(`/ops/staff/${s.id}`, { salaryPaisa: rupeesToPaisa(salary) ?? 0, workingDays: Number(days) || 24, startDate: start || null, emergencyContact: emergency.trim() || null }), 'Profile save ho gaya');
-  const mark = useAct((kind: 'ABSENCE' | 'LATE' | 'UNIFORM') => post(`/ops/staff/${s.id}/marks`, { month, kind }), 'Note ho gaya');
+  const mark = useAct((kind: 'ABSENCE' | 'LATE' | 'UNIFORM' | 'WARNING' | 'POINTS') => post(`/ops/staff/${s.id}/marks`, { month, kind, ...(kind === 'POINTS' ? { points: Number(points) } : {}) }), 'Note ho gaya');
+  const login = useAct(() => post(`/ops/staff/${s.id}/send-login`), 'Login message queue ho gaya');
   const give = useAct(() => post(`/ops/staff/${s.id}/advance`, { amountPaisa: rupeesToPaisa(advance) ?? 0 }), 'Advance de diya', () => setAdvance(''));
-  const pay = useAct(() => post(`/ops/staff/${s.id}/pay`, { month, advanceCutPaisa: rupeesToPaisa(cut) ?? 0 }), 'Salary slip ban gayi');
-  const net = s.salaryPaisa - s.absenceDeductionPaisa - (rupeesToPaisa(cut) ?? 0);
+  const pay = useAct(() => post(`/ops/staff/${s.id}/pay`, { month, advanceCutPaisa: rupeesToPaisa(cut) ?? 0, bonusPaisa: rupeesToPaisa(bonus) ?? 0 }), 'Salary slip ban gayi');
+  const net = s.salaryPaisa - s.absenceDeductionPaisa - (rupeesToPaisa(cut) ?? 0) + (rupeesToPaisa(bonus) ?? 0);
   return (
     <Card>
       <CardHeader><CardTitle>{s.displayName}</CardTitle><Chip tone={s.slip ? 'success' : 'neutral'}>{s.slip ? `Paid ${formatRs(s.slip.netPaisa)}` : titleCase(s.role)}</Chip></CardHeader>
-      <p className="text-dense text-muted">Absences {s.absences} · Late {s.lates} · Uniform notes {s.uniformNotes} · Advance baqi {formatRs(s.advanceBalancePaisa)}</p>
+      <p className="text-dense text-muted">Absences {s.absences} · Late {s.lates} · Uniform notes {s.uniformNotes} · Warnings {s.warnings} · Points {s.points} · Advance baqi {formatRs(s.advanceBalancePaisa)}</p>
       <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
         <Field label="Salary (Rs)" htmlFor={`${s.id}-s`}><Input id={`${s.id}-s`} inputMode="decimal" value={salary} onChange={(e) => setSalary(e.target.value)} /></Field>
         <Field label="Working days" htmlFor={`${s.id}-d`}><Input id={`${s.id}-d`} inputMode="numeric" value={days} onChange={(e) => setDays(e.target.value.replace(/\D/g, ''))} /></Field>
@@ -254,6 +263,10 @@ function StaffCard({ s, month, onPrint }: { s: Staff; month: string; onPrint: (k
         <Button size="sm" variant="ghost" loading={mark.isPending} onClick={() => mark.mutate('ABSENCE')}>Mark absence</Button>
         <Button size="sm" variant="ghost" loading={mark.isPending} onClick={() => mark.mutate('LATE')}>Mark late</Button>
         <Button size="sm" variant="ghost" loading={mark.isPending} onClick={() => mark.mutate('UNIFORM')}>Uniform note</Button>
+        <Button size="sm" variant="ghost" loading={mark.isPending} onClick={() => mark.mutate('WARNING')}>Warning</Button>
+        <Field label="Points" htmlFor={`${s.id}-pt`}><Select id={`${s.id}-pt`} value={points} onChange={(e) => setPoints(e.target.value)}>{['5', '4', '3', '2', '1'].map((n) => <option key={n}>{n}</option>)}</Select></Field>
+        <Button size="sm" variant="ghost" loading={mark.isPending} onClick={() => mark.mutate('POINTS')}>Save points</Button>
+        <Button size="sm" variant="ghost" disabled={!s.phone} loading={login.isPending} onClick={() => login.mutate(undefined)}>Send login to phone</Button>
         <Button size="sm" variant="ghost" onClick={() => onPrint('agreement', s)}><Printer className="size-4" /> Agreement</Button>
         {s.slip && <Button size="sm" variant="ghost" onClick={() => onPrint('slip', s)}><Printer className="size-4" /> Slip</Button>}
       </div>
@@ -263,11 +276,12 @@ function StaffCard({ s, month, onPrint }: { s: Staff; month: string; onPrint: (k
         {!s.slip && (
           <>
             <Field label="Advance katoti (Rs)" htmlFor={`${s.id}-c`}><Input id={`${s.id}-c`} inputMode="decimal" value={cut} onChange={(e) => setCut(e.target.value)} /></Field>
+            <Field label="Bonus (Rs)" htmlFor={`${s.id}-bn`}><Input id={`${s.id}-bn`} inputMode="decimal" value={bonus} onChange={(e) => setBonus(e.target.value)} /></Field>
             <Button size="sm" disabled={s.salaryPaisa <= 0 || net < 0 || rupeesToPaisa(cut) === null} loading={pay.isPending} onClick={() => pay.mutate(undefined)}>Pay {formatRs(net)} and make slip</Button>
           </>
         )}
       </div>
-      <ActError error={save.error ?? mark.error ?? give.error ?? pay.error} />
+      <ActError error={save.error ?? mark.error ?? give.error ?? pay.error ?? login.error} />
     </Card>
   );
 }
@@ -293,6 +307,7 @@ function PayrollTab({ month }: { month: string }) {
           <p>Salary {formatRs(doc.s.slip.salaryPaisa)}</p>
           <p>Absence deduction ({doc.s.slip.extraAbsences}) {formatRs(doc.s.slip.absenceDeductionPaisa)}</p>
           <p>Advance cut {formatRs(doc.s.slip.advanceCutPaisa)}</p>
+          <p>Bonus {formatRs(doc.s.slip.bonusPaisa)}</p>
           <p><strong>Net {formatRs(doc.s.slip.netPaisa)}</strong></p>
           <p>Paid {formatDateTime(doc.s.slip.paidAt)}</p>
         </div>
@@ -325,6 +340,7 @@ function CostsTab({ month }: { month: string }) {
             <StatTile label="Billed" value={formatRs(d.billedPaisa)} />
             <StatTile label="Left after stock" value={formatRs(d.billedPaisa - d.costPaisa)} />
           </div>
+          {d.rows.length > 0 && <CopyForExcel rows={[['Patient', 'Items', 'Cost', 'Billed', 'Left'], ...d.rows.map((r) => [r.patient, r.items.join(', '), rupees(r.costPaisa), rupees(r.billedPaisa), rupees(r.leftPaisa)])]} />}
           {d.rows.length === 0 ? <EmptyState title="Is mahine kisi procedure mein stock istemal nahi hua" /> : (
             <DataTable
               rows={d.rows}
@@ -341,6 +357,34 @@ function CostsTab({ month }: { month: string }) {
         </div>
       )}
     </Loaded>
+  );
+}
+
+function NewItemRow({ item }: { item: { id: string; name: string; baseUnit: string; minQty: number } }) {
+  const [unit, setUnit] = React.useState(item.baseUnit);
+  const [min, setMin] = React.useState(String(item.minQty));
+  const [cost, setCost] = React.useState('');
+  const save = useAct(() => put(`/ops/new-items/${item.id}`, { unit: unit.trim(), minQty: Number(min) || 0, costPaisa: rupeesToPaisa(cost) ?? 0 }), 'Item ki details save ho gayin');
+  return (
+    <div className="flex flex-wrap items-end gap-2 border-b border-line pb-2">
+      <p className="w-full font-semibold text-ink">{item.name}</p>
+      <Field label="Unit" htmlFor={`ni-u-${item.id}`}><Input id={`ni-u-${item.id}`} value={unit} onChange={(e) => setUnit(e.target.value)} /></Field>
+      <Field label="Reminder at" htmlFor={`ni-m-${item.id}`}><Input id={`ni-m-${item.id}`} inputMode="numeric" value={min} onChange={(e) => setMin(e.target.value.replace(/\D/g, ''))} /></Field>
+      <Field label="Cost of one unit (Rs)" htmlFor={`ni-c-${item.id}`}><Input id={`ni-c-${item.id}`} inputMode="decimal" value={cost} onChange={(e) => setCost(e.target.value)} /></Field>
+      <Button size="sm" disabled={!unit.trim() || rupeesToPaisa(cost) === null} loading={save.isPending} onClick={() => save.mutate(undefined)}>Save</Button>
+      <ActError error={save.error} />
+    </div>
+  );
+}
+
+function NewItems() {
+  const q = useQuery({ queryKey: ['ops', 'new-items'], queryFn: () => get<{ items: { id: string; name: string; baseUnit: string; minQty: number }[] }>('/ops/new-items') });
+  if (!q.data?.items.length) return null;
+  return (
+    <Card>
+      <CardHeader><CardTitle>New items waiting for details</CardTitle></CardHeader>
+      <div className="space-y-2">{q.data.items.map((i) => <NewItemRow key={i.id} item={i} />)}</div>
+    </Card>
   );
 }
 
@@ -376,7 +420,7 @@ function SpendCell({ campaign, month, value }: { campaign: string; month: string
   );
 }
 
-function CampaignsTab({ month }: { month: string }) {
+function CampaignsTab({ month, editable = true }: { month: string; editable?: boolean }) {
   const q = useQuery({ queryKey: ['ops', 'campaigns', month], queryFn: () => get<{ items: { campaign: string; spendPaisa: number; leads: number; booked: number; costPerLeadPaisa: number; revenuePaisa: number; returnBp: number | null }[] }>('/ops/campaigns', { month }) });
   return (
     <Loaded q={q} empty={(d) => d.items.length === 0} emptyTitle="Koi campaign nahi">
@@ -386,7 +430,7 @@ function CampaignsTab({ month }: { month: string }) {
           rowKey={(r) => r.campaign}
           columns={[
             { key: 'c', header: 'Campaign', cell: (r) => <span className="font-semibold">{r.campaign}</span> },
-            { key: 's', header: 'Spend (Rs)', cell: (r) => <SpendCell key={`${month}:${r.spendPaisa}`} campaign={r.campaign} month={month} value={r.spendPaisa} /> },
+            { key: 's', header: 'Spend (Rs)', cell: (r) => (editable ? <SpendCell key={`${month}:${r.spendPaisa}`} campaign={r.campaign} month={month} value={r.spendPaisa} /> : formatRs(r.spendPaisa)) },
             { key: 'l', header: 'Leads', cell: (r) => r.leads },
             { key: 'p', header: 'Cost per lead', cell: (r) => formatRs(r.costPerLeadPaisa) },
             { key: 'b', header: 'Booked', cell: (r) => r.booked },
@@ -399,7 +443,112 @@ function CampaignsTab({ month }: { month: string }) {
   );
 }
 
-type FinanceTab = 'pnl' | 'expenses' | 'ledger' | 'payroll' | 'costs' | 'campaigns' | 'check';
+function FeedbackTab({ month }: { month: string }) {
+  const q = useQuery({ queryKey: ['ops', 'feedback', month], queryFn: () => get<{ responses: number; byPerson: { name: string; count: number; averageX10: number | null }[]; overall: { name: string; count: number; averageX10: number | null }[]; comments: { text: string; at: string }[] }>('/ops/feedback-report', { month }) });
+  const score = (x: { count: number; averageX10: number | null }) => (x.averageX10 === null ? '—' : `${x.averageX10 / 10} / 5 (${x.count})`);
+  return (
+    <Loaded q={q}>
+      {(d) => (
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{d.overall.map((o) => <StatTile key={o.name} label={o.name} value={score(o)} />)}</div>
+          {d.byPerson.length > 0 && (
+            <DataTable rows={d.byPerson} rowKey={(r) => r.name} columns={[{ key: 'n', header: 'Doctor', cell: (r) => <span className="font-semibold">{r.name}</span> }, { key: 's', header: 'Rating', cell: score }]} />
+          )}
+          <Card>
+            <CardHeader><CardTitle>What patients said</CardTitle></CardHeader>
+            {d.comments.length === 0 ? <p className="text-dense text-muted">Abhi kuch nahi.</p> : <ul className="space-y-1 text-dense">{d.comments.map((c, i) => <li key={i}>{c.text} <span className="text-muted">· {formatDate(c.at)}</span></li>)}</ul>}
+          </Card>
+        </div>
+      )}
+    </Loaded>
+  );
+}
+
+function FloorRow({ item }: { item: { id: string; name: string; salePricePaisa: number | null; floorPricePaisa: number | null } }) {
+  const [text, setText] = React.useState(item.floorPricePaisa === null ? '' : String(item.floorPricePaisa / 100));
+  const save = useAct(() => put(`/ops/products/${item.id}/floor-price`, { floorPaisa: text.trim() ? (rupeesToPaisa(text) ?? 0) : null }), 'Lowest price save ho gayi');
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Input aria-label={`Lowest price for ${item.name}`} className="w-28" inputMode="decimal" value={text} onChange={(e) => setText(e.target.value)} />
+      <Button size="sm" variant="secondary" loading={save.isPending} onClick={() => save.mutate(undefined)}>Save</Button>
+      <ActError error={save.error} />
+    </div>
+  );
+}
+
+function ProductsTab() {
+  const q = useQuery({ queryKey: ['ops', 'products'], queryFn: () => get<{ items: { id: string; name: string; salePricePaisa: number | null; floorPricePaisa: number | null }[] }>('/ops/products') });
+  return (
+    <Loaded q={q} empty={(d) => d.items.length === 0} emptyTitle="Koi pharmacy product nahi">
+      {(d) => (
+        <DataTable
+          rows={d.items}
+          rowKey={(r) => r.id}
+          columns={[
+            { key: 'n', header: 'Product', cell: (r) => <span className="font-semibold">{r.name}</span> },
+            { key: 'p', header: 'List price', cell: (r) => (r.salePricePaisa === null ? '—' : formatRs(r.salePricePaisa)) },
+            { key: 'f', header: 'Lowest allowed (Rs)', cell: (r) => <FloorRow key={`${r.id}:${r.floorPricePaisa}`} item={r} /> },
+          ]}
+        />
+      )}
+    </Loaded>
+  );
+}
+
+/** The Manager sees each doctor's bills and share, never item cost or extra cost. */
+export function ManagerDoctorsPage() {
+  const [month, setMonth] = React.useState(thisMonth());
+  const q = useQuery({ queryKey: ['ops', 'ledger-manager', month], queryFn: () => get<{ doctors: { doctorId: string; name: string; monthSharePaisa: number; earnedPaisa: number; paidPaisa: number; balancePaisa: number; rows: { invoiceId: string; patient: string | null; own: boolean; type: string; billPaisa: number; bp: number; sharePaisa: number }[] }[] }>('/ops/doctor-ledger/manager', { month }) });
+  return (
+    <div className="space-y-3">
+      <PageHeader label="Doctors" title="Doctor Ledger" />
+      <MonthField value={month} onChange={setMonth} />
+      <Loaded q={q} empty={(d) => d.doctors.length === 0} emptyTitle="Koi doctor nahi">
+        {(d) => d.doctors.map((x) => (
+          <Card key={x.doctorId}>
+            <CardHeader><CardTitle>{x.name}</CardTitle><span className="text-card-title">{formatRs(x.balancePaisa)} baqi</span></CardHeader>
+            <p className="text-dense text-muted">Is mahine {formatRs(x.monthSharePaisa)} · Kul kamai {formatRs(x.earnedPaisa)} · Paid {formatRs(x.paidPaisa)}</p>
+            {x.rows.length > 0 && (
+              <div className="mt-2">
+                <DataTable rows={x.rows} rowKey={(r) => r.invoiceId} columns={[
+                  { key: 'p', header: 'Patient', cell: (r) => `${r.patient ?? '—'} · ${r.own ? 'Own' : 'Clinic'} · ${r.type}` },
+                  { key: 'b', header: 'Bill', cell: (r) => formatRs(r.billPaisa) },
+                  { key: 'r', header: '%', cell: (r) => bpText(r.bp) },
+                  { key: 's', header: 'Share', cell: (r) => <span className="font-semibold">{formatRs(r.sharePaisa)}</span> },
+                ]} />
+              </div>
+            )}
+          </Card>
+        ))}
+      </Loaded>
+    </div>
+  );
+}
+
+/** Marketing reads campaign results; only the owners enter the spend. */
+export function CampaignsPage() {
+  const [month, setMonth] = React.useState(thisMonth());
+  return (
+    <div className="space-y-3">
+      <PageHeader label="Marketing" title="Campaign Performance" />
+      <MonthField value={month} onChange={setMonth} />
+      <CampaignsTab month={month} editable={false} />
+    </div>
+  );
+}
+
+export function FeedbackPage() {
+  const [month, setMonth] = React.useState(thisMonth());
+  return (
+    <div className="space-y-3">
+      <PageHeader label="Patients" title="Patient Feedback" />
+      <MonthField value={month} onChange={setMonth} />
+      <FeedbackTab month={month} />
+    </div>
+  );
+}
+
+type FinanceTab = 'pnl' | 'expenses' | 'ledger' | 'payroll' | 'costs' | 'campaigns' | 'feedback' | 'products' | 'check';
 
 export function FinancePage() {
   const [tab, setTab] = React.useState<FinanceTab>('pnl');
@@ -418,10 +567,12 @@ export function FinancePage() {
             { value: 'payroll', label: 'Payroll' },
             { value: 'costs', label: 'Procedure Costs' },
             { value: 'campaigns', label: 'Campaigns' },
+            { value: 'feedback', label: 'Patient Feedback' },
+            { value: 'products', label: 'Lowest Prices' },
             { value: 'check', label: 'Data Check' },
           ]}
         />
-        {tab !== 'check' && <MonthField value={month} onChange={setMonth} />}
+        {tab !== 'check' && tab !== 'products' && <MonthField value={month} onChange={setMonth} />}
       </div>
       {tab === 'pnl' && <PnlTab month={month} />}
       {tab === 'expenses' && <ExpensesTab month={month} />}
@@ -429,7 +580,9 @@ export function FinancePage() {
       {tab === 'payroll' && <PayrollTab month={month} />}
       {tab === 'costs' && <CostsTab month={month} />}
       {tab === 'campaigns' && <CampaignsTab month={month} />}
-      {tab === 'check' && <CheckTab />}
+      {tab === 'feedback' && <FeedbackTab month={month} />}
+      {tab === 'products' && <ProductsTab />}
+      {tab === 'check' && <div className="space-y-3"><NewItems /><CheckTab /></div>}
     </div>
   );
 }

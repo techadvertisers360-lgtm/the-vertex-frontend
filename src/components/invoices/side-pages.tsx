@@ -394,6 +394,7 @@ interface InvoiceSettings {
   numberFormat: string;
   taxEnabled: boolean;
   taxBasisPoints: number;
+  taxCardBasisPoints: number | null;
   clinicName: string;
   logoDataUrl: string | null;
   numberExample: string;
@@ -415,15 +416,15 @@ async function logoToDataUrl(file: File): Promise<string> {
 export function InvoiceSettingsPage() {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ['invoice-setup', 'settings'], queryFn: () => get<InvoiceSettings>('/invoices/settings') });
-  const [form, setForm] = React.useState<{ numberPrefix: string; numberFormat: string; taxEnabled: boolean; taxPercent: string; clinicName: string; logoDataUrl: string | null } | null>(null);
+  const [form, setForm] = React.useState<{ numberPrefix: string; numberFormat: string; taxEnabled: boolean; taxPercent: string; nonCashPercent: string; clinicName: string; logoDataUrl: string | null } | null>(null);
   React.useEffect(() => {
-    if (q.data && !form) setForm({ numberPrefix: q.data.numberPrefix, numberFormat: q.data.numberFormat, taxEnabled: q.data.taxEnabled, taxPercent: String(q.data.taxBasisPoints / 100), clinicName: q.data.clinicName, logoDataUrl: q.data.logoDataUrl });
+    if (q.data && !form) setForm({ numberPrefix: q.data.numberPrefix, numberFormat: q.data.numberFormat, taxEnabled: q.data.taxEnabled, taxPercent: String(q.data.taxBasisPoints / 100), nonCashPercent: q.data.taxCardBasisPoints === null ? '' : String(q.data.taxCardBasisPoints / 100), clinicName: q.data.clinicName, logoDataUrl: q.data.logoDataUrl });
   }, [q.data, form]);
   const [logoError, setLogoError] = React.useState('');
   const save = useMutation({
     mutationFn: () => {
       const bp = rupeesToPaisa(form!.taxPercent) ?? 0;
-      return put<InvoiceSettings>('/invoices/settings', { numberPrefix: form!.numberPrefix.trim(), numberFormat: form!.numberFormat.trim(), taxEnabled: form!.taxEnabled, taxBasisPoints: bp, clinicName: form!.clinicName.trim(), logoDataUrl: form!.logoDataUrl });
+      return put<InvoiceSettings>('/invoices/settings', { numberPrefix: form!.numberPrefix.trim(), numberFormat: form!.numberFormat.trim(), taxEnabled: form!.taxEnabled, taxBasisPoints: bp, taxCardBasisPoints: form!.nonCashPercent.trim() ? (rupeesToPaisa(form!.nonCashPercent) ?? 0) : null, clinicName: form!.clinicName.trim(), logoDataUrl: form!.logoDataUrl });
     },
     onSuccess: (d) => {
       qc.setQueryData(['invoice-setup', 'settings'], d);
@@ -461,6 +462,9 @@ export function InvoiceSettingsPage() {
                 <Checkbox label="Tax on" checked={f.taxEnabled} onChange={(e) => setForm({ ...f, taxEnabled: e.target.checked })} />
                 <Field label="Tax rate (%)" htmlFor="is-rate" hint="Total ke andar dikhta hai, amount nahi barhta. Sirf nayi direct invoices par. Accountant se tasdeeq karein." error={rateValid ? undefined : '0 se 100 ke darmiyan likhein.'}>
                   <Input id="is-rate" inputMode="decimal" value={f.taxPercent} onChange={(e) => setForm({ ...f, taxPercent: e.target.value })} />
+                </Field>
+                <Field label="Non-cash tax rate (%)" htmlFor="is-rate2" hint="Khali chhorein to upar wala rate lagega.">
+                  <Input id="is-rate2" inputMode="decimal" value={f.nonCashPercent} onChange={(e) => setForm({ ...f, nonCashPercent: e.target.value })} />
                 </Field>
               </div>
             </Card>

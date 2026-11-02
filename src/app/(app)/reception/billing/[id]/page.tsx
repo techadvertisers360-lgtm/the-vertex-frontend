@@ -1,5 +1,6 @@
 'use client';
 import * as React from 'react';
+import { useSession } from '@/lib/session';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -207,6 +208,8 @@ function PaymentForm({ inv }: { inv: InvoiceDetail }) {
   const [method, setMethod] = React.useState('CASH');
   const [reference, setReference] = React.useState('');
   const [bank, setBank] = React.useState(inv.bankAccounts[0]?.id ?? '');
+  const [slip, setSlip] = React.useState('');
+  const { me } = useSession();
   const paisa = rupeesToPaisa(amount);
   const m = useMutation({
     mutationFn: (body: unknown) => post<{ payment: { receiptNo: string }; replayed: boolean }>(`/reception/invoices/${inv.id}/payments`, body, keyFor(body)),
@@ -225,7 +228,7 @@ function PaymentForm({ inv }: { inv: InvoiceDetail }) {
       className="space-y-3"
       onSubmit={(e) => {
         e.preventDefault();
-        if (!invalid) m.mutate({ amountPaisa: paisa, method, reference: reference || undefined, bankAccountId: method === 'CASH' ? undefined : bank });
+        if (!invalid) m.mutate({ amountPaisa: paisa, method, reference: reference || undefined, bankAccountId: method === 'CASH' ? undefined : bank, slipAttachmentId: method === 'CASH' ? undefined : slip || undefined });
       }}
     >
       <div className="grid gap-3 sm:grid-cols-2">
@@ -262,11 +265,12 @@ function PaymentForm({ inv }: { inv: InvoiceDetail }) {
           {m.error instanceof ApiError ? m.error.message : 'Payment save nahi hua'}
         </Notice>
       )}
+      {method !== 'CASH' && <UploadButton route="paymentSlip" recordType="Pending" recordId={me.user.id} label={slip ? 'Slip add ho gayi' : inv.requireSlip ? 'Payment slip (zaroori)' : 'Payment slip'} onUploaded={setSlip} />}
       <div className="flex flex-wrap justify-end gap-2">
         <Button type="button" variant="ghost" onClick={() => setAmount(String(inv.balancePaisa / 100))} disabled={!inv.balancePaisa}>
           Full balance
         </Button>
-        <Button type="submit" loading={m.isPending} disabled={invalid}>
+        <Button type="submit" loading={m.isPending} disabled={invalid || (method !== 'CASH' && !!inv.requireSlip && !slip)}>
           Receive payment
         </Button>
       </div>
@@ -291,10 +295,10 @@ function Stars({ label, value, onChange }: { label: string; value: number; onCha
 
 function FeedbackCard({ inv }: { inv: InvoiceDetail }) {
   const qc = useQueryClient();
-  const [r, setR] = React.useState({ doctorRating: 0, staffRating: 0, clinicRating: 0 });
+  const [r, setR] = React.useState({ doctorRating: 0, staffRating: 0, clinicRating: 0, receptionRating: 0, managerRating: 0 });
   const [suggestion, setSuggestion] = React.useState('');
   const m = useMutation({
-    mutationFn: (skip: boolean) => post(`/reception/appointments/${inv.appointment.id}/feedback`, skip ? { skip: true } : { ...r, suggestion: suggestion || undefined }),
+    mutationFn: (skip: boolean) => post(`/reception/appointments/${inv.appointment.id}/feedback`, skip ? { skip: true } : { doctorRating: r.doctorRating, staffRating: r.staffRating, clinicRating: r.clinicRating, receptionRating: r.receptionRating || undefined, managerRating: r.managerRating || undefined, suggestion: suggestion || undefined }),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['tracker'] }),
   });
   const fb = inv.feedback;
@@ -311,6 +315,8 @@ function FeedbackCard({ inv }: { inv: InvoiceDetail }) {
           <Stars label="Doctor" value={r.doctorRating} onChange={(v) => setR({ ...r, doctorRating: v })} />
           <Stars label="Staff" value={r.staffRating} onChange={(v) => setR({ ...r, staffRating: v })} />
           <Stars label="Clinic" value={r.clinicRating} onChange={(v) => setR({ ...r, clinicRating: v })} />
+          <Stars label="Reception" value={r.receptionRating} onChange={(v) => setR({ ...r, receptionRating: v })} />
+          <Stars label="Manager" value={r.managerRating} onChange={(v) => setR({ ...r, managerRating: v })} />
           <Textarea rows={2} aria-label="Suggestion" placeholder="Suggestion (optional)" value={suggestion} onChange={(e) => setSuggestion(e.target.value)} />
           <div className="flex justify-end gap-2">
             <Button variant="secondary" size="sm" onClick={() => m.mutate(true)} disabled={m.isPending}>

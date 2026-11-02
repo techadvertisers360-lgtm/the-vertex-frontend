@@ -264,6 +264,7 @@ export interface PatientBalance {
 }
 
 export interface InvoiceDetail extends InvoiceSummary {
+  requireSlip?: boolean;
   number: string;
   subtotalPaisa: number;
   discountPaisa: number;

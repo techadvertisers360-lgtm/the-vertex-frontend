@@ -1,5 +1,7 @@
 'use client';
 import * as React from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import { useSession } from '@/lib/session';
 import { useQueryClient } from '@tanstack/react-query';
 import { MapPin, RefreshCw } from 'lucide-react';
 import { ApiError, get, GEOFENCE_EVENT, post } from '@/lib/api';
@@ -14,7 +16,7 @@ import { Button } from '@/components/ui/button';
 const OUTSIDE = 'Yeh app sirf clinic par khulti hai';
 const ASKED_KEY = 'vh-geo-explained';
 
-type Status = { required: boolean; claimUntil: string | null; recheckMs: number };
+type Status = { required: boolean; claimUntil: string | null; recheckMs: number; limitedOutside?: boolean; wifiName?: string | null };
 type CheckResult = { ok: true; required: boolean } | { ok: false; message: string };
 type State = { kind: 'idle' } | { kind: 'intro' } | { kind: 'checking' } | { kind: 'blocked'; message: string };
 
@@ -40,6 +42,10 @@ const explained = () => {
 export function GeofenceGate() {
   const qc = useQueryClient();
   const [state, setState] = React.useState<State>({ kind: 'idle' });
+  const [outside, setOutside] = React.useState<{ limited: boolean; wifiName: string | null }>({ limited: false, wifiName: null });
+  const { me } = useSession();
+  const router = useRouter();
+  const pathname = usePathname();
   const required = React.useRef(false);
   const busy = React.useRef(false);
 
@@ -72,6 +78,7 @@ export function GeofenceGate() {
     try {
       const s = await get<Status>('/geofence/status');
       required.current = s.required;
+      setOutside({ limited: !!s.limitedOutside, wifiName: s.wifiName ?? null });
       if (!s.required) return setState({ kind: 'idle' });
       const left = s.claimUntil ? new Date(s.claimUntil).getTime() - Date.now() : 0;
       if (left < 6 * 60_000) start(); // the 10-minute recheck keeps the 15-minute claim alive
@@ -97,7 +104,9 @@ export function GeofenceGate() {
     };
   }, [refresh, check, start]);
 
-  if (state.kind === 'idle') return null;
+  // With the setting on, Chat and Requests stay usable outside the clinic (D-092).
+  const openOutside = outside.limited && (pathname === `${me.home}/chat` || pathname === `${me.home}/outside`);
+  if (state.kind === 'idle' || openOutside) return null;
   return (
     <div role="alertdialog" aria-modal="true" aria-labelledby="geo-title" className="fixed inset-0 z-[60] flex items-center justify-center bg-canvas/95 p-4 backdrop-blur-sm">
       <div className="w-full max-w-md rounded-card border border-line bg-surface p-6 text-center shadow-overlay">
@@ -143,6 +152,13 @@ export function GeofenceGate() {
             <Button className="mt-4 w-full" onClick={() => void check()}>
               <RefreshCw className="size-4" aria-hidden /> Retry
             </Button>
+            {outside.wifiName && <p className="mt-2 text-dense text-muted">Clinic par hain to Wi-Fi &ldquo;{outside.wifiName}&rdquo; se connect karein.</p>}
+            {outside.limited && (
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                <Button variant="secondary" onClick={() => router.push(`${me.home}/outside`)}>Leave and requests</Button>
+                <Button variant="secondary" onClick={() => router.push(`${me.home}/chat`)}>Chat</Button>
+              </div>
+            )}
           </>
         )}
       </div>

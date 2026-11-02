@@ -106,7 +106,6 @@ test('create, pay later, overpay into an advance, print, and cancel', async ({ b
   await rec.waitForURL(/\/reception\/invoices\/(?!new)[^/]+$/);
   await expect(rec.getByText('Rs 4,000').first()).toBeVisible();
   await expect(rec.getByRole('button', { name: 'Invoice cancel karein' })).toHaveCount(0); // Reception cannot cancel
-  await expect(rec.getByRole('button', { name: 'Send via SMS / WhatsApp' })).toBeDisabled();
   await shot(rec, 'detail-reception');
   const url = new URL(rec.url()).pathname;
   const invoiceId = url.split('/').pop()!;

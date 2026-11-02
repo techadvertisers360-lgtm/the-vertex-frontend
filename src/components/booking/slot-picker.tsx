@@ -12,8 +12,8 @@ import { ErrorState, Skeleton } from '@/components/ui/states';
 export function useDoctors() {
   return useQuery({ queryKey: ['scheduling', 'doctors'], queryFn: () => get<{ items: Doctor[] }>('/scheduling/doctors'), staleTime: 5 * 60_000 });
 }
-export function useServices() {
-  return useQuery({ queryKey: ['scheduling', 'services'], queryFn: () => get<{ items: Service[] }>('/scheduling/services'), staleTime: 5 * 60_000 });
+export function useServices(doctorId?: string) {
+  return useQuery({ queryKey: ['scheduling', 'services', doctorId ?? ''], queryFn: () => get<{ items: Service[] }>('/scheduling/services', { doctorId: doctorId || undefined }), staleTime: 5 * 60_000 });
 }
 
 /** Human explanation for a suggestion (spec §6 "reason dikhaye"). */
@@ -179,7 +179,7 @@ export function DoctorServiceFields({
   lockDoctor?: boolean;
 }) {
   const doctors = useDoctors();
-  const services = useServices();
+  const services = useServices(doctorId);
   const svc = (services.data?.items ?? []).filter((s) => s.type === type);
   return (
     <div className="grid gap-3 sm:grid-cols-3">

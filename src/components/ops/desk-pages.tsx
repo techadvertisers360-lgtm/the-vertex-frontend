@@ -16,7 +16,8 @@ import { EmptyState } from '@/components/ui/states';
 import { DataTable, Segmented } from '@/components/ui/table';
 import { UploadButton } from '@/components/ui/upload';
 import { emptyPayment, PatientPicker, PaymentFields, paymentBody, paymentComplete, useInvoiceOptions, type PaymentDraft } from '@/components/invoices/payment-fields';
-import { ActError, Loaded, useAct, useDebounced, useOps } from './common';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { ActError, CopyForExcel, Loaded, rupees, useAct, useDebounced, useOps } from './common';
 
 const statusChip = (s: string) => <StatusChip status={s} />;
 
@@ -27,7 +28,10 @@ interface ClinicNow {
   doctors: { id: string; name: string; busyWith: string | null; waiting: number }[];
   patients: { id: string; name: string; status: string; doctor: string | null; startAt: string }[];
   leaves: { doctor: string; date: string }[];
+  schedule: { doctorId: string; name: string; days: { date: string; leave: boolean; startMinute: number | null; endMinute: number | null; booked: number }[] }[];
 }
+
+const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 
 export function ClinicNowPage() {
   const q = useQuery({ queryKey: ['ops', 'clinic-now'], queryFn: () => get<ClinicNow>('/ops/clinic-now'), refetchInterval: 30_000 });
@@ -86,6 +90,23 @@ export function ClinicNowPage() {
                 )}
               </Card>
             </div>
+            <Card>
+              <CardHeader><CardTitle>Doctor schedule, next 7 days</CardTitle></CardHeader>
+              <div className="space-y-3">
+                {d.schedule.map((s) => (
+                  <div key={s.doctorId}>
+                    <p className="font-semibold text-ink">{s.name}</p>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {s.days.map((x) => (
+                        <span key={x.date} className="rounded-control border border-line px-2 py-1 text-[12px] text-ink">
+                          {formatDate(x.date)}: {x.leave ? 'Leave' : x.startMinute === null || x.endMinute === null ? 'Off' : `${hhmm(x.startMinute)}–${hhmm(x.endMinute)}`}{x.booked ? ` · ${x.booked} booked` : ''}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
           </>
         )}
       </Loaded>
@@ -136,13 +157,16 @@ interface InvoiceRequest { id: string; type: 'PART_PAYMENT' | 'BILL_CORRECTION';
 interface SaleReturn { id: string; number: string; description: string; invoiceNumber: string; quantity: number; refundPaisa: number; restock: boolean; method: string; reason: string; status: string; requestedBy: string | null; decidedBy: string | null; decisionNote: string | null }
 interface Returnable { id: string; description: string; quantity: number; returnableQty: number; lineTotalPaisa: number; invoiceNumber: string; patient: string | null }
 
-function Decide({ path, canAmount, asked }: { path: string; canAmount?: boolean; asked?: number | null }) {
+function Decide({ path, canAmount, asked, canAdjust }: { path: string; canAmount?: boolean; asked?: number | null; canAdjust?: boolean }) {
   const [note, setNote] = React.useState('');
   const [amount, setAmount] = React.useState(asked ? String(asked / 100) : '');
-  const m = useAct((approve: boolean) => post(path, { approve, note: note.trim() || undefined, ...(canAmount && approve ? { amountApprovedPaisa: rupeesToPaisa(amount) ?? undefined } : {}) }), 'Faisla save ho gaya');
+  const [adjust, setAdjust] = React.useState('');
+  const adjustPaisa = rupeesToPaisa(adjust.trim().replace(/^-/, ''));
+  const m = useAct((approve: boolean) => post(path, { approve, note: note.trim() || undefined, ...(canAmount && approve ? { amountApprovedPaisa: rupeesToPaisa(amount) ?? undefined } : {}), ...(canAdjust && approve && adjustPaisa ? { adjustmentPaisa: adjust.trim().startsWith('-') ? -adjustPaisa : adjustPaisa } : {}) }), 'Faisla save ho gaya');
   return (
     <div className="mt-2 space-y-2 border-t border-line pt-2">
       {canAmount && <Field label="Approved amount (Rs)" htmlFor={`${path}-a`}><Input id={`${path}-a`} inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>}
+      {canAdjust && <Field label="Bill mein tabdeeli (Rs), kam karni ho to minus likhein" htmlFor={`${path}-j`}><Input id={`${path}-j`} value={adjust} onChange={(e) => setAdjust(e.target.value)} placeholder="-500" /></Field>}
       <Field label="Note (reject par zaroori)" htmlFor={`${path}-n`}><Input id={`${path}-n`} value={note} onChange={(e) => setNote(e.target.value)} /></Field>
       <ActError error={m.error} />
       <div className="flex gap-2">
@@ -168,7 +192,7 @@ export function RequestList({ canDecide }: { canDecide: boolean }) {
               {r.type === 'PART_PAYMENT' && <p className="text-dense text-muted">Balance {formatRs(r.amountNeededPaisa)} · Abhi de sakta hai {formatRs(r.amountAskedPaisa)}{r.amountApprovedPaisa !== null ? ` · Approved ${formatRs(r.amountApprovedPaisa)}` : ''}</p>}
               <p className="text-dense text-ink">{r.note}</p>
               <p className="text-[12px] text-muted">{r.requestedBy} · {formatDateTime(r.createdAt)}{r.decidedBy ? ` · Faisla: ${r.decidedBy}` : ''}{r.decisionNote ? ` · ${r.decisionNote}` : ''}</p>
-              {canDecide && r.status === 'PENDING' && <Decide path={`/ops/invoice-requests/${r.id}/decide`} canAmount={r.type === 'PART_PAYMENT'} asked={r.amountAskedPaisa} />}
+              {canDecide && r.status === 'PENDING' && <Decide path={`/ops/invoice-requests/${r.id}/decide`} canAmount={r.type === 'PART_PAYMENT'} asked={r.amountAskedPaisa} canAdjust={r.type === 'BILL_CORRECTION'} />}
             </Card>
           ))}
         </div>
@@ -290,16 +314,83 @@ function ReturnList({ canDecide }: { canDecide: boolean }) {
   );
 }
 
+interface VendorPayment { id: string; vendor: string | null; amountPaisa: number; note: string; status: string; requestedBy: string | null; decidedBy: string | null; decisionNote: string | null; supplierPaymentId: string | null }
+
+function VendorPayments({ canAsk, canApprove }: { canAsk: boolean; canApprove: boolean }) {
+  const q = useOps('vendor-payments', () => get<{ items: VendorPayment[]; vendors: { id: string; name: string }[]; banks: { id: string; name: string }[] }>('/ops/vendor-payments'));
+  const [vendorId, setVendorId] = React.useState('');
+  const [amount, setAmount] = React.useState('');
+  const [note, setNote] = React.useState('');
+  const [method, setMethod] = React.useState('CASH');
+  const [bank, setBank] = React.useState('');
+  const [reference, setReference] = React.useState('');
+  const ask = useAct(() => post('/ops/vendor-payments', { vendorId, amountPaisa: rupeesToPaisa(amount) ?? 0, note: note.trim() }), 'Request MD aur Hamza ko bhej di', () => { setAmount(''); setNote(''); });
+  const record = useAct((id: string) => post(`/ops/vendor-payments/${id}/record`, { method, bankAccountId: method === 'CASH' ? undefined : bank, reference: reference.trim() || undefined }), 'Vendor payment save ho gayi');
+  return (
+    <div className="space-y-3">
+      {canAsk && (
+        <Card>
+          <CardHeader><CardTitle>Vendor payment request</CardTitle></CardHeader>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Field label="Vendor" required htmlFor="vp-v"><Select id="vp-v" value={vendorId} onChange={(e) => setVendorId(e.target.value)}><option value="">Chunein</option>{(q.data?.vendors ?? []).map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</Select></Field>
+            <Field label="Amount (Rs)" required htmlFor="vp-a"><Input id="vp-a" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>
+            <Field label="Kis cheez ki" required htmlFor="vp-n"><Input id="vp-n" value={note} onChange={(e) => setNote(e.target.value)} /></Field>
+          </div>
+          <div className="mt-3 space-y-2">
+            <ActError error={ask.error} />
+            <Button disabled={!vendorId || !rupeesToPaisa(amount) || note.trim().length < 3} loading={ask.isPending} onClick={() => ask.mutate(undefined)}>Send request</Button>
+          </div>
+        </Card>
+      )}
+      <Loaded q={q} empty={(d) => d.items.length === 0} emptyTitle="Koi vendor payment request nahi">
+        {(d) => (
+          <div className="space-y-2">
+            {d.items.map((r) => (
+              <Card key={r.id}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="font-semibold text-ink">{r.vendor} · {formatRs(r.amountPaisa)}</p>
+                  {r.supplierPaymentId ? <Chip tone="success">Paid</Chip> : statusChip(r.status)}
+                </div>
+                <p className="text-dense text-ink">{r.note}</p>
+                <p className="text-[12px] text-muted">{r.requestedBy}{r.decidedBy ? ` · Faisla: ${r.decidedBy}` : ''}{r.decisionNote ? ` · ${r.decisionNote}` : ''}</p>
+                {canApprove && r.status === 'PENDING' && <Decide path={`/ops/vendor-payments/${r.id}/decide`} />}
+                {r.status === 'APPROVED' && !r.supplierPaymentId && (
+                  <div className="mt-2 flex flex-wrap items-end gap-2 border-t border-line pt-2">
+                    <Field label="Method" htmlFor={`vp-m-${r.id}`}><Select id={`vp-m-${r.id}`} value={method} onChange={(e) => setMethod(e.target.value)}><option value="CASH">Cash</option><option value="BANK_ONLINE">Bank / online</option><option value="CHEQUE">Cheque</option></Select></Field>
+                    {method !== 'CASH' && (
+                      <>
+                        <Field label="Bank account" htmlFor={`vp-b-${r.id}`}><Select id={`vp-b-${r.id}`} value={bank} onChange={(e) => setBank(e.target.value)}><option value="">Chunein</option>{d.banks.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</Select></Field>
+                        <Field label="Reference" htmlFor={`vp-r-${r.id}`}><Input id={`vp-r-${r.id}`} value={reference} onChange={(e) => setReference(e.target.value)} /></Field>
+                      </>
+                    )}
+                    <Button size="sm" disabled={method !== 'CASH' && (!bank || !reference.trim())} loading={record.isPending} onClick={() => record.mutate(r.id)}>Record payment</Button>
+                  </div>
+                )}
+              </Card>
+            ))}
+          </div>
+        )}
+      </Loaded>
+      <ActError error={record.error} />
+    </div>
+  );
+}
+
 export function RequestsReturnsPage({ canAsk, canDecide }: { canAsk: boolean; canDecide: boolean }) {
-  const [tab, setTab] = React.useState<'requests' | 'returns'>('requests');
+  const { me } = useSession();
+  const isOwner = me.user.role === 'MD' || me.user.role === 'MARKETING_DIRECTOR';
+  const showVendors = canDecide;
+  const [tab, setTab] = React.useState<'requests' | 'returns' | 'vendors'>('requests');
   return (
     <div className="space-y-3">
       <PageHeader label="Billing" title="Requests & Returns" />
-      <Segmented value={tab} onChange={setTab} options={[{ value: 'requests', label: 'Part payment / correction' }, { value: 'returns', label: 'Pharmacy returns' }]} />
+      <Segmented value={tab} onChange={setTab} options={[{ value: 'requests', label: 'Part payment / correction' }, { value: 'returns', label: 'Pharmacy returns' }, ...(showVendors ? [{ value: 'vendors' as const, label: 'Vendor payments' }] : [])]} />
       {tab === 'requests' ? (
         <div className="space-y-3">{canAsk && <NewRequest />}<RequestList canDecide={canDecide} /></div>
-      ) : (
+      ) : tab === 'returns' ? (
         <div className="space-y-3">{canAsk && <NewReturn />}<ReturnList canDecide={canDecide} /></div>
+      ) : (
+        <VendorPayments canAsk={!isOwner} canApprove={isOwner} />
       )}
     </div>
   );
@@ -318,40 +409,48 @@ export function DoctorRequestsPage() {
 
 interface Handover { id: string; date: string; amountPaisa: number; leftAtDeskPaisa: number | null; from: string | null; to: string | null; toId: string; note: string | null; receivedAt: string | null }
 
-export function HandoverPage() {
-  const { me } = useSession();
+/** Used on the Handover screen and inside Cash Closing. */
+export function GiveCashCard() {
   const q = useOps('handovers', () => get<{ items: Handover[]; receivers: { id: string; displayName: string }[] }>('/ops/handovers'));
   const [toId, setToId] = React.useState('');
   const [amount, setAmount] = React.useState('');
   const [left, setLeft] = React.useState('');
   const [note, setNote] = React.useState('');
+  const hand = useAct(() => post('/ops/handovers', { toId, amountPaisa: rupeesToPaisa(amount) ?? 0, leftAtDeskPaisa: left.trim() ? (rupeesToPaisa(left) ?? 0) : undefined, note: note.trim() || undefined }), 'Cash de diya: receiver confirm karega', () => { setAmount(''); setLeft(''); setNote(''); });
+  return (
+    <Card>
+      <CardHeader><CardTitle>Cash kisi ko dein</CardTitle></CardHeader>
+      <div className="space-y-3">
+        <Field label="Kisko" required htmlFor="h-to">
+          <Select id="h-to" value={toId} onChange={(e) => setToId(e.target.value)}>
+            <option value="">Chunein</option>
+            {(q.data?.receivers ?? []).map((r) => <option key={r.id} value={r.id}>{r.displayName}</option>)}
+          </Select>
+        </Field>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Amount (Rs)" required htmlFor="h-a"><Input id="h-a" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>
+          <Field label="Reception par reh gaya (Rs)" htmlFor="h-l"><Input id="h-l" inputMode="decimal" value={left} onChange={(e) => setLeft(e.target.value)} /></Field>
+        </div>
+        <Field label="Note" htmlFor="h-n"><Input id="h-n" value={note} onChange={(e) => setNote(e.target.value)} /></Field>
+        <ActError error={hand.error} />
+        <Button disabled={!toId || !rupeesToPaisa(amount)} loading={hand.isPending} onClick={() => hand.mutate(undefined)}>Cash dein</Button>
+      </div>
+    </Card>
+  );
+}
+
+export function HandoverPage() {
+  const { me } = useSession();
+  const q = useOps('handovers', () => get<{ items: Handover[]; receivers: { id: string; displayName: string }[] }>('/ops/handovers'));
   const [what, setWhat] = React.useState('');
   const [out, setOut] = React.useState('');
-  const hand = useAct(() => post('/ops/handovers', { toId, amountPaisa: rupeesToPaisa(amount) ?? 0, leftAtDeskPaisa: left.trim() ? (rupeesToPaisa(left) ?? 0) : undefined, note: note.trim() || undefined }), 'Cash de diya: receiver confirm karega', () => { setAmount(''); setLeft(''); setNote(''); });
   const confirm = useAct((id: string) => post(`/ops/handovers/${id}/confirm`), 'Cash confirm ho gaya');
   const cashOut = useAct(() => post('/ops/cash-out', { category: 'Cash paid out', description: what.trim(), amountPaisa: rupeesToPaisa(out) ?? 0 }), 'Cash paid out save ho gaya', () => { setWhat(''); setOut(''); });
   return (
     <div className="space-y-4">
       <PageHeader label="Cash" title="Cash Handover" />
       <div className="grid gap-4 xl:grid-cols-2">
-        <Card>
-          <CardHeader><CardTitle>Cash kisi ko dein</CardTitle></CardHeader>
-          <div className="space-y-3">
-            <Field label="Kisko" required htmlFor="h-to">
-              <Select id="h-to" value={toId} onChange={(e) => setToId(e.target.value)}>
-                <option value="">Chunein</option>
-                {(q.data?.receivers ?? []).map((r) => <option key={r.id} value={r.id}>{r.displayName}</option>)}
-              </Select>
-            </Field>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Amount (Rs)" required htmlFor="h-a"><Input id="h-a" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>
-              <Field label="Reception par reh gaya (Rs)" htmlFor="h-l"><Input id="h-l" inputMode="decimal" value={left} onChange={(e) => setLeft(e.target.value)} /></Field>
-            </div>
-            <Field label="Note" htmlFor="h-n"><Input id="h-n" value={note} onChange={(e) => setNote(e.target.value)} /></Field>
-            <ActError error={hand.error} />
-            <Button disabled={!toId || !rupeesToPaisa(amount)} loading={hand.isPending} onClick={() => hand.mutate(undefined)}>Cash dein</Button>
-          </div>
-        </Card>
+        <GiveCashCard />
         <Card>
           <CardHeader><CardTitle>Drawer se cash paid out</CardTitle></CardHeader>
           <div className="space-y-3">
@@ -480,7 +579,8 @@ export function OrdersPage() {
   const [bill, setBill] = React.useState<Record<string, string>>({});
   const [printing, setPrinting] = React.useState<PurchaseOrder | null>(null);
   const create = useAct(() => post('/ops/purchase-orders', { vendorId, lines: lines.map((l) => (l.itemId ? { itemId: l.itemId, quantity: l.quantity } : { name: l.name, quantity: l.quantity })) }), 'Purchase order ban gaya', () => { setLines([]); setVendorId(''); });
-  const decide = useAct((v: { id: string; action: 'RECEIVED' | 'CANCELLED' }) => post(`/ops/purchase-orders/${v.id}/decide`, { action: v.action, vendorBillNo: bill[v.id]?.trim() || undefined }), 'Order update ho gaya');
+  const [got, setGot] = React.useState<Record<string, { qty?: string; cost?: string; expiry?: string }>>({});
+  const decide = useAct((v: { order: PurchaseOrder; action: 'RECEIVED' | 'CANCELLED' }) => post(`/ops/purchase-orders/${v.order.id}/decide`, { action: v.action, vendorBillNo: bill[v.order.id]?.trim() || undefined, ...(v.action === 'RECEIVED' ? { received: v.order.lines.map((l) => ({ lineId: l.id, quantity: Number(got[l.id]?.qty ?? l.quantity), costPaisa: rupeesToPaisa(got[l.id]?.cost ?? '') ?? undefined, expiryDate: got[l.id]?.expiry || undefined })) } : {}) }), 'Order update ho gaya: stock Manager ki verification ke liye gaya');
   const add = () => {
     const known = q.data?.stockItems.find((i) => i.id === itemId);
     const name = known?.name ?? itemName.trim();
@@ -519,15 +619,28 @@ export function OrdersPage() {
                     <p className="font-semibold text-ink">{o.number} · {o.vendor?.name}</p>
                     {statusChip(o.status)}
                   </div>
-                  <ul className="text-dense">{o.lines.map((l) => <li key={l.id}>{l.name} × {l.quantity}</li>)}</ul>
+                  {o.status === 'OPEN' ? (
+                    <div className="space-y-2">
+                      {o.lines.map((l) => (
+                        <div key={l.id} className="grid items-end gap-2 sm:grid-cols-4">
+                          <p className="text-dense text-ink">{l.name} × {l.quantity}</p>
+                          <Field label="Mila" htmlFor={`g-${l.id}`}><Input id={`g-${l.id}`} inputMode="numeric" value={got[l.id]?.qty ?? String(l.quantity)} onChange={(e) => setGot((g) => ({ ...g, [l.id]: { ...g[l.id], qty: e.target.value.replace(/\D/g, '') } }))} /></Field>
+                          <Field label="Cost per unit (Rs)" htmlFor={`gc-${l.id}`}><Input id={`gc-${l.id}`} inputMode="decimal" value={got[l.id]?.cost ?? ''} onChange={(e) => setGot((g) => ({ ...g, [l.id]: { ...g[l.id], cost: e.target.value } }))} /></Field>
+                          <Field label="Expiry" htmlFor={`ge-${l.id}`}><Input id={`ge-${l.id}`} type="date" value={got[l.id]?.expiry ?? ''} onChange={(e) => setGot((g) => ({ ...g, [l.id]: { ...g[l.id], expiry: e.target.value } }))} /></Field>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <ul className="text-dense">{o.lines.map((l) => <li key={l.id}>{l.name} × {l.receivedQty ?? l.quantity}</li>)}</ul>
+                  )}
                   <p className="text-[12px] text-muted">{o.createdBy} · {formatDateTime(o.createdAt)}{o.vendorBillNo ? ` · Bill ${o.vendorBillNo}` : ''}</p>
                   <div className="mt-2 flex flex-wrap items-end gap-2">
                     <Button size="sm" variant="secondary" onClick={() => setPrinting(o)}><Printer className="size-4" /> Print order</Button>
                     {o.status === 'OPEN' && (
                       <>
                         <Field label="Vendor bill number" htmlFor={`po-b-${o.id}`}><Input id={`po-b-${o.id}`} value={bill[o.id] ?? ''} onChange={(e) => setBill((b) => ({ ...b, [o.id]: e.target.value }))} /></Field>
-                        <Button size="sm" disabled={!bill[o.id]?.trim()} loading={decide.isPending} onClick={() => decide.mutate({ id: o.id, action: 'RECEIVED' })}>Goods arrived</Button>
-                        <Button size="sm" variant="ghost" loading={decide.isPending} onClick={() => decide.mutate({ id: o.id, action: 'CANCELLED' })}>Cancel order</Button>
+                        <Button size="sm" disabled={!bill[o.id]?.trim()} loading={decide.isPending} onClick={() => decide.mutate({ order: o, action: 'RECEIVED' })}>Goods arrived</Button>
+                        <Button size="sm" variant="ghost" loading={decide.isPending} onClick={() => decide.mutate({ order: o, action: 'CANCELLED' })}>Cancel order</Button>
                       </>
                     )}
                   </div>
@@ -631,6 +744,46 @@ export function OfficePurchasesPage({ canAsk, canDecide, canSettle, isOwner }: {
 
 // ───────────── Kits and room holds ─────────────
 
+function DoctorDepartments({ doctor }: { doctor: { id: string; name: string; departments: string[] } }) {
+  const [text, setText] = React.useState(doctor.departments.join(', '));
+  const save = useAct(() => put(`/ops/departments/doctors/${doctor.id}`, { departments: text.split(',').map((x) => x.trim()).filter(Boolean) }), 'Departments save ho gaye');
+  return (
+    <div className="flex flex-wrap items-end gap-2">
+      <Field label={doctor.name} htmlFor={`d-${doctor.id}`}><Input id={`d-${doctor.id}`} value={text} onChange={(e) => setText(e.target.value)} placeholder="Dental, ENT" /></Field>
+      <Button size="sm" variant="secondary" loading={save.isPending} onClick={() => save.mutate(undefined)}>Save</Button>
+    </div>
+  );
+}
+
+function ServiceDepartment({ service }: { service: { id: string; name: string; department: string | null } }) {
+  const [text, setText] = React.useState(service.department ?? '');
+  const save = useAct(() => put(`/ops/departments/services/${service.id}`, { department: text.trim() || null }), 'Department save ho gaya');
+  return (
+    <div className="flex flex-wrap items-end gap-2">
+      <Field label={service.name} htmlFor={`s-${service.id}`}><Input id={`s-${service.id}`} value={text} onChange={(e) => setText(e.target.value)} /></Field>
+      <Button size="sm" variant="secondary" loading={save.isPending} onClick={() => save.mutate(undefined)}>Save</Button>
+    </div>
+  );
+}
+
+function Departments() {
+  const q = useOps('departments', () => get<{ doctors: { id: string; name: string; departments: string[] }[]; services: { id: string; name: string; department: string | null }[] }>('/ops/departments'));
+  return (
+    <Card>
+      <CardHeader><CardTitle>Departments</CardTitle></CardHeader>
+      <p className="mb-2 text-dense text-muted">Doctor ke departments likhne par booking mein sirf unki services aayengi. Khali chhorein to sab services aayengi.</p>
+      <Loaded q={q}>
+        {(d) => (
+          <div className="grid gap-4 xl:grid-cols-2">
+            <div className="space-y-2">{d.doctors.map((x) => <DoctorDepartments key={x.id} doctor={x} />)}</div>
+            <div className="max-h-96 space-y-2 overflow-y-auto">{d.services.map((x) => <ServiceDepartment key={x.id} service={x} />)}</div>
+          </div>
+        )}
+      </Loaded>
+    </Card>
+  );
+}
+
 export function KitsPage() {
   const kits = useOps('kits', () => get<{ kits: { id: string; serviceName: string; itemName: string; quantity: number }[]; services: { id: string; name: string }[]; items: { id: string; name: string; baseUnit: string }[] }>('/ops/kits'));
   const holds = useOps('room-holds', () => get<{ items: { id: string; room: string; purpose: string; startAt: string; endAt: string }[]; rooms: { id: string; code: string }[] }>('/ops/room-holds'));
@@ -646,7 +799,8 @@ export function KitsPage() {
   const cancel = useAct((id: string) => post(`/ops/room-holds/${id}/cancel`), 'Reservation cancel ho gayi');
   return (
     <div className="space-y-4">
-      <PageHeader label="Clinic" title="Kits & Room Holds" />
+      <PageHeader label="Clinic" title="Kits, Rooms & Departments" />
+      <Departments />
       <div className="grid gap-4 xl:grid-cols-2">
         <Card>
           <CardHeader><CardTitle>Procedure ka standard kit</CardTitle></CardHeader>
@@ -681,9 +835,21 @@ export function KitsPage() {
 
 // ───────────── Documents ─────────────
 
+/** A saved report's figures as label and value; anything ending in Paisa is shown in rupees. */
+function reportLines(payload: Record<string, unknown>, prefix = ''): [string, string][] {
+  return Object.entries(payload).flatMap(([k, v]): [string, string][] => {
+    const label = `${prefix}${titleCase(k.replace(/Paisa$/, '').replace(/([A-Z])/g, ' $1'))}`;
+    if (v && typeof v === 'object' && !Array.isArray(v)) return reportLines(v as Record<string, unknown>, `${label}: `);
+    if (v === null || v === undefined || Array.isArray(v)) return [];
+    return [[label, k.endsWith('Paisa') ? formatRs(Number(v)) : String(v)]];
+  });
+}
+
 export function DocumentsPage() {
   const [text, setText] = React.useState('');
   const debounced = useDebounced(text);
+  const [openId, setOpenId] = React.useState<string | null>(null);
+  const report = useQuery({ queryKey: ['ops', 'saved-report', openId], queryFn: () => get<{ title: string; payload: Record<string, unknown> }>(`/ops/saved-reports/${openId}`), enabled: !!openId });
   const q = useQuery({ queryKey: ['ops', 'documents', debounced], queryFn: () => get<{ items: { id: string; kind: string; number: string; amountPaisa: number | null; status: string; date: string }[]; saved: { id: string; title: string; date: string }[] }>('/ops/documents', { q: debounced || undefined }) });
   return (
     <div className="space-y-3">
@@ -692,6 +858,7 @@ export function DocumentsPage() {
       <Loaded q={q}>
         {(d) => (
           <>
+            {d.items.length > 0 && <CopyForExcel rows={[['Type', 'Number', 'Rs', 'Status', 'Date'], ...d.items.map((r) => [r.kind, r.number, rupees(r.amountPaisa), titleCase(r.status), formatDate(r.date)])]} />}
             {d.items.length === 0 ? <EmptyState title="Koi record nahi mila" /> : (
               <DataTable
                 rows={d.items}
@@ -707,8 +874,25 @@ export function DocumentsPage() {
             )}
             <Card>
               <CardHeader><CardTitle>Saved reports</CardTitle></CardHeader>
-              {d.saved.length === 0 ? <p className="text-dense text-muted">Din band hone par report yahan khud save hoti hai.</p> : <ul className="text-dense">{d.saved.map((s) => <li key={s.id}>{s.title}</li>)}</ul>}
+              {d.saved.length === 0 ? <p className="text-dense text-muted">Din band hone par report yahan khud save hoti hai.</p> : <ul className="space-y-1 text-dense">{d.saved.map((s) => <li key={s.id}><button className="font-semibold text-brand-medium hover:underline" onClick={() => setOpenId(s.id)}>{s.title}</button></li>)}</ul>}
             </Card>
+            <Dialog open={!!openId} onOpenChange={(v) => !v && setOpenId(null)}>
+              <DialogContent title={report.data?.title ?? 'Report'}>
+                <Loaded q={report}>
+                  {(r) => (
+                    <div className="space-y-1">
+                      {reportLines(r.payload).map(([label, value]) => (
+                        <div key={label} className="flex justify-between gap-3 border-b border-line py-1 text-dense"><span>{label}</span><span className="font-semibold">{value}</span></div>
+                      ))}
+                      <div className="flex gap-2 pt-2 print:hidden">
+                        <CopyForExcel rows={reportLines(r.payload)} />
+                        <Button size="sm" variant="secondary" onClick={() => window.print()}><Printer className="size-4" /> Print</Button>
+                      </div>
+                    </div>
+                  )}
+                </Loaded>
+              </DialogContent>
+            </Dialog>
           </>
         )}
       </Loaded>

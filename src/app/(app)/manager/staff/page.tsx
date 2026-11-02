@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { ArrowDown, ArrowUp, Plus, Star, Trash2 } from 'lucide-react';
 import { ApiError, get, post, put } from '@/lib/api';
 import { useRealtime } from '@/lib/realtime';
-import { formatTime } from '@/lib/time';
+import { clinicDate, formatTime } from '@/lib/time';
 import type { AssistantRow, StaffRow } from '@/lib/manager-types';
 import { cn, titleCase } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -29,6 +29,23 @@ function Stars({ value, onChange }: { value: number; onChange: (v: number) => vo
           <Star className={cn('size-6', n <= value ? 'fill-gold text-gold' : 'text-line')} />
         </button>
       ))}
+    </div>
+  );
+}
+
+/** The Manager marks absence, lateness, uniform or a warning for the month; MD and Hamza see them in Payroll (D-090). */
+function StaffMarks({ staff }: { staff: StaffRow }) {
+  const m = useMutation({
+    mutationFn: (kind: 'ABSENCE' | 'LATE' | 'UNIFORM' | 'WARNING') => post(`/ops/staff/${staff.id}/marks`, { month: clinicDate().slice(0, 7), kind }),
+    onSuccess: () => toast.success('Note ho gaya'),
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : 'Save nahi hua. Dobara koshish karein.'),
+  });
+  return (
+    <div className="flex flex-wrap gap-1">
+      <Button size="sm" variant="ghost" loading={m.isPending} onClick={() => m.mutate('ABSENCE')}>Absence</Button>
+      <Button size="sm" variant="ghost" loading={m.isPending} onClick={() => m.mutate('LATE')}>Late</Button>
+      <Button size="sm" variant="ghost" loading={m.isPending} onClick={() => m.mutate('UNIFORM')}>Uniform</Button>
+      <Button size="sm" variant="ghost" loading={m.isPending} onClick={() => m.mutate('WARNING')}>Warning</Button>
     </div>
   );
 }
@@ -107,6 +124,7 @@ function ArrivalTab() {
                 header: 'Arrival',
                 cell: (r) => (r.attendance ? `${formatTime(r.attendance.checkInAt)}${r.attendance.checkOutAt ? ` – ${formatTime(r.attendance.checkOutAt)}` : ''}` : r.attendanceRequired === false ? <Chip tone="info">Check-in off</Chip> : <Chip>Not checked in</Chip>),
               },
+              { key: 'marks', header: 'This month', cell: (r) => <StaffMarks staff={r} /> },
               { key: 'rooms', header: 'Rooms', cell: (r) => (r.role === 'ASSISTANT' ? r.rooms.map((x) => x.code).join(', ') || '—' : ''), hideSm: true },
               {
                 key: 'review',

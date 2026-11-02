@@ -63,6 +63,7 @@ interface Procedure {
   assignedAt: string | null;
   acceptedAt: string | null;
   consentAt: string | null;
+  mediaConsent: boolean | null;
   startedAt: string | null;
   endedAt: string | null;
   sentToReceptionAt: string | null;
@@ -127,7 +128,7 @@ interface Visit {
   plan: { doctorName: string | null; currentVersionNo: number; versions: PlanVersion[] } | null;
   procedures: Procedure[];
   invoice: Invoice | null;
-  feedback: { skipped: boolean; doctorRating: number | null; staffRating: number | null; clinicRating: number | null; suggestion: string | null; submittedAt: string | null } | null;
+  feedback: { skipped: boolean; doctorRating: number | null; staffRating: number | null; clinicRating: number | null; receptionRating: number | null; managerRating: number | null; suggestion: string | null; submittedAt: string | null } | null;
   followUp: { dueDate: string; doctorRating: number | null; staffRating: number | null; clinicRating: number | null; issue: string | null; suggestion: string | null; status: string; completedAt: string | null } | null;
   aftercare: { skipped: boolean; content: string | null; createdAt: string } | null;
 }
@@ -277,6 +278,7 @@ function ProcedureBlock({ p }: { p: Procedure }) {
       )}
       <p className="text-dense text-muted">
         Assign {dt(p.assignedAt)} · Accept {dt(p.acceptedAt)} · Consent {dt(p.consentAt)} · Start {dt(p.startedAt)} · End {dt(p.endedAt)}
+        {p.mediaConsent !== null ? ` · Media consent: ${p.mediaConsent ? 'Haan' : 'Nahi'}` : ''}
       </p>
       {(p.beforePhotoSkipReason || p.afterPhotoSkipReason) && (
         <p className="text-dense text-ink">
@@ -425,7 +427,7 @@ function VisitCard({ v }: { v: Visit }) {
               {v.feedback.skipped
                 ? 'Skipped'
                 : v.feedback.submittedAt
-                  ? `Doctor ${stars(v.feedback.doctorRating)} · Staff ${stars(v.feedback.staffRating)} · Clinic ${stars(v.feedback.clinicRating)}${v.feedback.suggestion ? ` · “${v.feedback.suggestion}”` : ''}`
+                  ? `Doctor ${stars(v.feedback.doctorRating)} · Staff ${stars(v.feedback.staffRating)} · Clinic ${stars(v.feedback.clinicRating)}${v.feedback.receptionRating ? ` · Reception ${stars(v.feedback.receptionRating)}` : ''}${v.feedback.managerRating ? ` · Manager ${stars(v.feedback.managerRating)}` : ''}${v.feedback.suggestion ? ` · “${v.feedback.suggestion}”` : ''}`
                   : 'Abhi nahi diya'}
             </p>
           )}

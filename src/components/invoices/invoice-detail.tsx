@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { ApiError, get, idempotencyFor, post } from '@/lib/api';
 import type { InvoiceDetail } from '@/lib/invoice-types';
 import { paisaToRupeesInput, rupeesToPaisa } from '@/lib/money';
+import { slipMissing } from './payment-fields';
 import { useRealtime } from '@/lib/realtime';
 import { useSession } from '@/lib/session';
 import { formatDate, formatDateTime } from '@/lib/time';
@@ -61,11 +62,11 @@ function PaymentDialog({ inv, open, onOpenChange }: { inv: InvoiceDetail; open: 
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent title="Payment lein" description={`Baqi balance: ${formatRs(inv.balancePaisa)}`}>
         <div className="space-y-3">
-          <PaymentFields value={p} onChange={setP} options={options.data} idPrefix="ip" />
+          <PaymentFields value={p} onChange={setP} options={options.data} idPrefix="ip" withSlip />
           {over > 0 && (inv.patient ? <Checkbox label={`Zyada ${formatRs(over)} patient ke advance mein save karein`} checked={extra} onChange={(e) => setExtra(e.target.checked)} /> : <Notice tone="warning">Amount balance se zyada hai.</Notice>)}
           {m.error && <Notice>{errorText(m.error)}</Notice>}
           <div className="flex justify-end">
-            <Button loading={m.isPending} disabled={!amount || !paymentComplete(p, options.data) || (over > 0 && (!inv.patient || !extra))} onClick={() => m.mutate()}>
+            <Button loading={m.isPending} disabled={!amount || !paymentComplete(p, options.data) || slipMissing(p, options.data) || (over > 0 && (!inv.patient || !extra))} onClick={() => m.mutate()}>
               Payment save karein
             </Button>
           </div>
@@ -169,6 +170,11 @@ function CancelDialog({ inv, open, onOpenChange }: { inv: InvoiceDetail; open: b
 const CANCEL_MONEY_TEXT = { NONE: 'Koi payment nahi thi.', MOVED_TO_ADVANCE: 'Raqam patient ke advance mein gayi.', REFUNDED: 'Raqam patient ko wapas ki gayi.' };
 
 export function InvoiceDetailPage({ id }: { id: string }) {
+  const message = useMutation({
+    mutationFn: () => post(`/ops/invoices/${id}/payment-message`),
+    onSuccess: () => toast.success('Payment message queue ho gaya'),
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : 'Message nahi gaya. Dobara koshish karein.'),
+  });
   const { me } = useSession();
   const { base, can, patientHref } = useInvoiceAccess();
   const { pollInterval } = useRealtime();
@@ -200,10 +206,11 @@ export function InvoiceDetailPage({ id }: { id: string }) {
                         </Link>
                       </>
                     )}
-                    {/* Hook for later (D-084): no SMS / WhatsApp provider is connected for invoices yet. */}
-                    <Button variant="secondary" disabled title="Jald aa raha hai">
-                      <MessageCircle className="size-4" aria-hidden /> Send via SMS / WhatsApp
-                    </Button>
+                    {inv.balancePaisa > 0 && inv.patient && (
+                      <Button variant="secondary" loading={message.isPending} onClick={() => message.mutate()}>
+                        <MessageCircle className="size-4" aria-hidden /> Send payment message
+                      </Button>
+                    )}
                     {canTakeMoney && can('pay') && (
                       <Button onClick={() => setDialog('pay')}>
                         <Wallet className="size-4" aria-hidden /> Payment lein

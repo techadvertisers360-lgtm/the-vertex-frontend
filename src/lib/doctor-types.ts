@@ -82,6 +82,7 @@ export interface HistoryVisit {
 }
 
 export interface PatientHistory {
+  labReports?: { id: string; fileName: string; createdAt: string }[];
   patient: { id: string; name: string; ageYears: number | null; gender: string | null; phone: string };
   access: 'own' | 'approved';
   visits: HistoryVisit[];

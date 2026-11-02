@@ -9,14 +9,22 @@ import { formatPhone } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Checkbox, Field, Input, Notice, Select } from '@/components/ui/form';
+import { UploadButton } from '@/components/ui/upload';
+import { useSession } from '@/lib/session';
 
 export interface PaymentDraft {
   modeId: string;
   amount: string;
   bankAccountId: string;
   reference: string;
+  slipId?: string;
 }
 export const emptyPayment: PaymentDraft = { modeId: '', amount: '', bankAccountId: '', reference: '' };
+
+/** Slip of a non-cash payment, required when the setting is on (D-091). */
+export function slipMissing(p: PaymentDraft, options: InvoiceOptions | undefined) {
+  return !!options?.requireSlip && paymentNeeds(p, options).needsBank && !p.slipId;
+}
 
 export function useInvoiceOptions() {
   return useQuery({ queryKey: ['invoice-setup', 'options'], queryFn: () => get<InvoiceOptions>('/invoices/options'), staleTime: 60_000 });
@@ -39,15 +47,22 @@ export function paymentBody(p: PaymentDraft, extraToAdvance?: boolean) {
     paymentModeId: p.modeId,
     bankAccountId: p.bankAccountId || undefined,
     reference: p.reference.trim() || undefined,
+    ...(p.slipId ? { slipAttachmentId: p.slipId } : {}),
     ...(extraToAdvance ? { extraToAdvance: true } : {}),
   };
 }
 
-export function PaymentFields({ value, onChange, options, idPrefix, amountLabel = 'Amount (Rs)', amountHint }: { value: PaymentDraft; onChange: (p: PaymentDraft) => void; options: InvoiceOptions | undefined; idPrefix: string; amountLabel?: string; amountHint?: string }) {
+export function PaymentFields({ value, onChange, options, idPrefix, amountLabel = 'Amount (Rs)', amountHint, withSlip = false }: { withSlip?: boolean; value: PaymentDraft; onChange: (p: PaymentDraft) => void; options: InvoiceOptions | undefined; idPrefix: string; amountLabel?: string; amountHint?: string }) {
   const n = paymentNeeds(value, options);
+  const { me } = useSession();
   const set = (patch: Partial<PaymentDraft>) => onChange({ ...value, ...patch });
   return (
     <div className="grid gap-3 sm:grid-cols-2">
+      {withSlip && n.needsBank && (
+        <div className="sm:col-span-2">
+          <UploadButton route="paymentSlip" recordType="Pending" recordId={me.user.id} label={value.slipId ? 'Slip add ho gayi' : options?.requireSlip ? 'Payment slip (zaroori)' : 'Payment slip'} onUploaded={(id) => set({ slipId: id })} />
+        </div>
+      )}
       <Field label="Payment mode" htmlFor={`${idPrefix}-mode`}>
         <Select id={`${idPrefix}-mode`} value={value.modeId} onChange={(e) => set({ modeId: e.target.value, bankAccountId: '', reference: '' })}>
           <option value="">— Chunein —</option>

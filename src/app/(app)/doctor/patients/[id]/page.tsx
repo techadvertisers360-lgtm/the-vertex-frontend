@@ -12,6 +12,7 @@ import { Card, CardHeader, CardTitle, SectionLabel } from '@/components/ui/card'
 import { Chip, StatusChip } from '@/components/ui/chip';
 import { EmptyState, ErrorState, LoadingRows } from '@/components/ui/states';
 import { ViewFileButton } from '@/components/ui/file-view';
+import { UploadButton } from '@/components/ui/upload';
 
 const DOC_LABEL: Record<string, string> = { prescriptionPhoto: 'Prescription', consentForm: 'Consent form', beforePhoto: 'Before photo', afterPhoto: 'After photo' };
 
@@ -55,6 +56,24 @@ export default function PatientHistoryPage() {
           {formatPhone(h.patient.phone)}
           {h.patient.ageYears ? ` · ${h.patient.ageYears} yrs` : ''}
         </p>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>Lab reports</CardTitle>
+          <UploadButton route="labReport" recordType="Patient" recordId={h.patient.id} label="Upload lab report" onUploaded={() => void q.refetch()} />
+        </CardHeader>
+        {(h.labReports ?? []).length === 0 ? (
+          <p className="text-dense text-muted">Koi lab report nahi.</p>
+        ) : (
+          <ul className="space-y-1 text-dense">
+            {h.labReports!.map((r) => (
+              <li key={r.id} className="flex flex-wrap items-center gap-2">
+                <FileText className="size-4 text-brand-medium" aria-hidden /> {r.fileName} · {formatDate(r.createdAt)}
+                <ViewFileButton attachmentId={r.id} />
+              </li>
+            ))}
+          </ul>
+        )}
       </Card>
       {h.visits.length === 0 ? (
         <EmptyState title="Koi visit nahi" />

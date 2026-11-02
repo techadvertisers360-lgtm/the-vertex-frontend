@@ -121,6 +121,37 @@ interface Line {
   qty: string;
 }
 
+/** An item not in the list (D-091): the photo is required, and Manager, MD and Hamza are told so they can add its cost. */
+function NewItemForm({ taskId }: { taskId: string }) {
+  const qc = useQueryClient();
+  const [name, setName] = React.useState('');
+  const [qty, setQty] = React.useState('1');
+  const [photo, setPhoto] = React.useState('');
+  const m = useMutation({
+    mutationFn: () => post(`/assistant/procedures/${taskId}/new-item`, { name: name.trim(), quantity: Number(qty), evidenceAttachmentId: photo }),
+    onSuccess: () => {
+      setName('');
+      setQty('1');
+      setPhoto('');
+      void qc.invalidateQueries({ queryKey: ['queue'] });
+    },
+  });
+  return (
+    <details className="rounded-card border border-line p-3">
+      <summary className="cursor-pointer text-dense font-semibold text-ink">Item list mein nahi? Yahan add karein</summary>
+      <div className="mt-2 space-y-2">
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Field label="Naye item ka naam" htmlFor="ni-name"><Input id="ni-name" value={name} onChange={(e) => setName(e.target.value)} /></Field>
+          <Field label="Quantity" htmlFor="ni-qty"><Input id="ni-qty" inputMode="numeric" value={qty} onChange={(e) => setQty(e.target.value.replace(/\D/g, ''))} /></Field>
+        </div>
+        <UploadButton route="itemsUsedEvidence" recordType="ProcedureTask" recordId={taskId} label={photo ? 'Photo add ho gayi' : 'Item ki photo (zaroori)'} accept="image/*" onUploaded={(id) => setPhoto(id)} />
+        {m.error && <Notice>{m.error instanceof ApiError ? m.error.message : 'Save nahi hua. Dobara koshish karein.'}</Notice>}
+        <Button type="button" size="sm" variant="secondary" disabled={name.trim().length < 2 || !Number(qty) || !photo} loading={m.isPending} onClick={() => m.mutate()}>Add new item and use it</Button>
+      </div>
+    </details>
+  );
+}
+
 /** Items used: choose stock items (no cost shown) + evidence photo; deducted once (spec §12). */
 function ItemsStep({ task, run }: { task: ProcedureDetail; run: (path: string, body?: object, key?: string) => void }) {
   const stock = useQuery({ queryKey: ['queue', 'assistant', 'stock'], queryFn: () => get<{ items: StockForUsage[] }>('/assistant/stock-items') });
@@ -134,10 +165,11 @@ function ItemsStep({ task, run }: { task: ProcedureDetail; run: (path: string, b
   const kit = useQuery({ queryKey: ['queue', 'assistant', 'kit', procedureName], queryFn: () => get<{ items: { itemId: string; name: string; quantity: number }[] }>('/ops/kits/for-procedure', { name: procedureName }), enabled: !!procedureName });
   const parsed = lines.filter((l) => l.itemId).map((l) => ({ itemId: l.itemId, quantity: Number(l.qty) }));
   const over = parsed.find((l) => (items.find((i) => i.id === l.itemId)?.usableQty ?? 0) < l.quantity);
-  const invalid = none ? false : !parsed.length || parsed.some((l) => !Number.isInteger(l.quantity) || l.quantity <= 0) || !evidence.length || !!over;
+  const onlyNew = task.itemsUsed.length > 0 && !parsed.length;
+  const invalid = none || onlyNew ? false : !parsed.length || parsed.some((l) => !Number.isInteger(l.quantity) || l.quantity <= 0) || !evidence.length || !!over;
 
   const submit = () => {
-    const body = none ? { lines: [], evidenceAttachmentIds: evidence, noItems: true } : { lines: parsed, evidenceAttachmentIds: evidence };
+    const body = none || onlyNew ? { lines: [], evidenceAttachmentIds: evidence, noItems: true } : { lines: parsed, evidenceAttachmentIds: evidence };
     run('items', body, keyFor(body));
   };
 
@@ -189,6 +221,8 @@ function ItemsStep({ task, run }: { task: ProcedureDetail; run: (path: string, b
         <UploadButton route="itemsUsedEvidence" recordType="ProcedureTask" recordId={task.id} label={evidence.length ? 'Aur photo' : 'Upload evidence'} accept="image/*" onUploaded={(id) => setEvidence((e) => [...e, id])} />
         {evidence.length > 0 && <p className="text-dense text-success">{evidence.length} photo upload ho gayi</p>}
       </div>
+      <NewItemForm taskId={task.id} />
+      {task.itemsUsed.length > 0 && <p className="text-dense text-success">Added: {task.itemsUsed.map((u) => `${u.name} × ${u.quantity}`).join(', ')}</p>}
       <Button onClick={submit} disabled={invalid}>
         Save items used
       </Button>
@@ -219,6 +253,20 @@ function SendToReception({ task, run, pending }: { task: ProcedureDetail; run: (
   );
 }
 
+/** Treatment consent is required; photo and video use is the patient's own choice, and is recorded with it (D-090). */
+function ConsentStep({ taskId, run }: { taskId: string; run: (path: string, body?: object, key?: string) => void }) {
+  const [media, setMedia] = React.useState(false);
+  const save = (attachmentId: string) => run('consent', { attachmentId, mediaConsent: media });
+  return (
+    <div className="space-y-2">
+      <p className="text-body text-ink">Patient se signed consent form lein aur us ki photo / PDF upload karein. Consent ke baghair procedure start nahi ho sakta.</p>
+      <Checkbox label="Patient photos aur videos ke istemal par raazi hai" checked={media} onChange={(e) => setMedia(e.target.checked)} />
+      <UploadButton route="consentForm" recordType="ProcedureTask" recordId={taskId} label="Upload signed consent" onUploaded={save} />
+      <SignaturePad recordId={taskId} onSaved={save} />
+    </div>
+  );
+}
+
 function CurrentStep({ task, run, pending }: { task: ProcedureDetail; run: (path: string, body?: object, key?: string) => void; pending: boolean }) {
   switch (task.currentStep) {
     case 'ACCEPT':
@@ -229,11 +277,7 @@ function CurrentStep({ task, run, pending }: { task: ProcedureDetail; run: (path
       );
     case 'CONSENT':
       return (
-        <div className="space-y-2">
-          <p className="text-body text-ink">Patient se signed consent form lein aur us ki photo / PDF upload karein. Consent ke baghair procedure start nahi ho sakta.</p>
-          <UploadButton route="consentForm" recordType="ProcedureTask" recordId={task.id} label="Upload signed consent" onUploaded={(attachmentId) => run('consent', { attachmentId })} />
-          <SignaturePad recordId={task.id} onSaved={(attachmentId) => run('consent', { attachmentId })} />
-        </div>
+        <ConsentStep taskId={task.id} run={run} />
       );
     case 'BEFORE_PHOTO':
       return <PhotoStep task={task} which="before" run={run} pending={pending} />;

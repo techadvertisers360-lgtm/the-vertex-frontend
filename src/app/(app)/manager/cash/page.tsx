@@ -10,6 +10,8 @@ import type { CashDay } from '@/lib/inventory-types';
 import { cn, formatRs, titleCase } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, PageHeader, StatTile } from '@/components/ui/card';
+import { GiveCashCard } from '@/components/ops/desk-pages';
+import { useSession } from '@/lib/session';
 import { Chip } from '@/components/ui/chip';
 import { Field, Input, Notice, Select, Textarea } from '@/components/ui/form';
 import { ErrorState, LoadingRows } from '@/components/ui/states';
@@ -77,6 +79,8 @@ function CloseForm({ d }: { d: CashDay }) {
 }
 
 function ClosingTab() {
+  const { me } = useSession();
+  const canClose = me.permissions.includes('cash:closing');
   const [date, setDate] = React.useState(clinicDate());
   const q = useQuery({ queryKey: ['cash', 'day', date], queryFn: () => get<CashDay>('/cash/day', { date }) });
   const d = q.data;
@@ -124,6 +128,23 @@ function ClosingTab() {
             </Card>
           )}
           <div className="grid gap-4 xl:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Drawer aur handover</CardTitle>
+              </CardHeader>
+              <p className="text-dense text-ink">Cash left from yesterday: <strong>{formatRs(d!.leftFromYesterdayPaisa)}</strong></p>
+              <p className="text-dense text-ink">Cash that should be in the drawer: <strong>{formatRs(d!.leftFromYesterdayPaisa + d!.cash.expectedPaisa)}</strong></p>
+              {d!.handovers.length > 0 && (
+                <ul className="mt-2 text-dense text-muted">
+                  {d!.handovers.map((h) => (
+                    <li key={h.id}>
+                      {h.from} → {h.to}: {formatRs(h.amountPaisa)}{h.leftAtDeskPaisa !== null ? ` · Reception par ${formatRs(h.leftAtDeskPaisa)}` : ''} · {h.receivedAt ? 'Received' : 'Waiting'}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
+            <GiveCashCard />
             <Card accent={d!.closing ? 'ops' : 'danger'}>
               <CardHeader>
                 <CardTitle>Cash in hand</CardTitle>
@@ -155,8 +176,10 @@ function ClosingTab() {
                   </p>
                   {d!.closing.notes && <p className="text-ink">{d!.closing.notes}</p>}
                 </div>
-              ) : (
+              ) : canClose ? (
                 <CloseForm key={d!.date} d={d!} />
+              ) : (
+                <p className="text-dense text-muted">Din Manager band karta hai.</p>
               )}
             </Card>
             <Card>
