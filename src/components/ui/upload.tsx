@@ -9,6 +9,8 @@ import { Notice } from './form';
 
 export type UploadRoute =
   | 'consentForm'
+  | 'labReport'
+  | 'officeBill'
   | 'prescriptionPhoto'
   | 'beforePhoto'
   | 'afterPhoto'
@@ -97,6 +99,17 @@ function friendly(e: unknown): string {
   // The storage provider rejected the file itself (e.g. plan does not allow private files) — not the user's fault.
   if (/XHR failed|ingest/i.test(msg)) return 'File storage (UploadThing) ne file reject kar di. Admin se rabta karein — private clinical files ke liye storage plan check karein.';
   return msg || 'Upload nahi hua — dobara koshish karein.';
+}
+
+/** Uploads a file made in the page (a drawn signature), with the same fallback as the button. */
+export async function uploadFileTo(route: UploadRoute, file: File, input: { recordType: string; recordId: string }): Promise<string> {
+  try {
+    return await uploadViaUploadThing(route, file, input, () => undefined);
+  } catch (e) {
+    const unconfigured = e instanceof Error && /UPLOADS_NOT_CONFIGURED|503/.test(e.message);
+    if (!unconfigured || (process.env.NODE_ENV === 'production' && process.env.NEXT_PUBLIC_UPLOAD_STUB !== '1')) throw e;
+    return uploadViaDevStub(route, file, input);
+  }
 }
 
 export function UploadButton({

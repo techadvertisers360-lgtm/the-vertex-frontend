@@ -16,6 +16,7 @@ import { Chip } from '@/components/ui/chip';
 import { Checkbox, Field, Input, Notice, Textarea } from '@/components/ui/form';
 import { ErrorState, LoadingRows } from '@/components/ui/states';
 import { UploadButton, type UploadRoute } from '@/components/ui/upload';
+import { SignaturePad } from '@/components/ops/signature-pad';
 import { ViewFileButton } from '@/components/ui/file-view';
 import { ReasonDialog } from '@/components/reception/dialogs';
 import { SearchSelect } from '@/components/booking/slot-picker';
@@ -128,6 +129,9 @@ function ItemsStep({ task, run }: { task: ProcedureDetail; run: (path: string, b
   const [evidence, setEvidence] = React.useState<string[]>([]);
   const [none, setNone] = React.useState(false);
   const items = stock.data?.items ?? [];
+  // The procedure's standard kit (D-089): one tap fills the lines, and they can still be changed.
+  const procedureName = task.procedure?.procedureName ?? '';
+  const kit = useQuery({ queryKey: ['queue', 'assistant', 'kit', procedureName], queryFn: () => get<{ items: { itemId: string; name: string; quantity: number }[] }>('/ops/kits/for-procedure', { name: procedureName }), enabled: !!procedureName });
   const parsed = lines.filter((l) => l.itemId).map((l) => ({ itemId: l.itemId, quantity: Number(l.qty) }));
   const over = parsed.find((l) => (items.find((i) => i.id === l.itemId)?.usableQty ?? 0) < l.quantity);
   const invalid = none ? false : !parsed.length || parsed.some((l) => !Number.isInteger(l.quantity) || l.quantity <= 0) || !evidence.length || !!over;
@@ -141,6 +145,11 @@ function ItemsStep({ task, run }: { task: ProcedureDetail; run: (path: string, b
   if (stock.isError) return <ErrorState error={stock.error} onRetry={() => stock.refetch()} />;
   return (
     <div className="space-y-3">
+      {(kit.data?.items.length ?? 0) > 0 && (
+        <Button type="button" variant="secondary" size="sm" onClick={() => setLines(kit.data!.items.map((x) => ({ itemId: x.itemId, qty: String(x.quantity) })))}>
+          Add the standard kit ({kit.data!.items.map((x) => `${x.name} × ${x.quantity}`).join(', ')})
+        </Button>
+      )}
       <Checkbox label="Is procedure mein koi stock item istemal nahi hua" checked={none} onChange={(e) => setNone(e.target.checked)} />
       {!none && (
         <>
@@ -223,6 +232,7 @@ function CurrentStep({ task, run, pending }: { task: ProcedureDetail; run: (path
         <div className="space-y-2">
           <p className="text-body text-ink">Patient se signed consent form lein aur us ki photo / PDF upload karein. Consent ke baghair procedure start nahi ho sakta.</p>
           <UploadButton route="consentForm" recordType="ProcedureTask" recordId={task.id} label="Upload signed consent" onUploaded={(attachmentId) => run('consent', { attachmentId })} />
+          <SignaturePad recordId={task.id} onSaved={(attachmentId) => run('consent', { attachmentId })} />
         </div>
       );
     case 'BEFORE_PHOTO':

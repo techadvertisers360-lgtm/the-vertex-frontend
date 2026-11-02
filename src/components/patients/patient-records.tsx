@@ -17,6 +17,7 @@ import { Checkbox, Field, Input, Notice, Select, Textarea } from '@/components/u
 import { EmptyState, ErrorState, LoadingRows, Skeleton } from '@/components/ui/states';
 import { DataTable } from '@/components/ui/table';
 import { ViewFileButton } from '@/components/ui/file-view';
+import { UploadButton } from '@/components/ui/upload';
 
 /**
  * Patient Records for Manager and MD (D-078): every patient, searchable; one patient's whole history A to Z —
@@ -136,6 +137,7 @@ interface PatientRecord {
   visits: Visit[];
   otherProcedures: Procedure[];
   otherInvoices: Invoice[];
+  labReports: Doc[];
 }
 
 const DOC_LABEL: Record<string, string> = {
@@ -144,6 +146,7 @@ const DOC_LABEL: Record<string, string> = {
   beforePhoto: 'Before photo',
   afterPhoto: 'After photo',
   itemsUsedEvidence: 'Items used',
+  labReport: 'Lab report',
 };
 
 // ───────────── List ─────────────
@@ -582,11 +585,11 @@ function EditPatientButton({ patient }: { patient: PatientRecord['patient'] }) {
   );
 }
 
-export function PatientRecordView({ id, base, backLabel = 'Patient Records', canEdit = true }: { id: string; base: string; backLabel?: string; canEdit?: boolean }) {
+export function PatientRecordView({ id, base, backLabel = 'Patient Records', canEdit = true, canUploadLab = false }: { id: string; base: string; backLabel?: string; canEdit?: boolean; canUploadLab?: boolean }) {
   const q = useQuery({ queryKey: ['patient-records', 'one', id], queryFn: () => get<PatientRecord>(`/patient-records/${id}`) });
   if (q.isPending) return <LoadingRows rows={6} />;
   if (q.isError) return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
-  const { patient: p, summary: s, visits, otherProcedures, otherInvoices } = q.data;
+  const { patient: p, summary: s, visits, otherProcedures, otherInvoices, labReports } = q.data;
   return (
     <div className="space-y-4">
       <Link href={base} className="inline-flex items-center gap-1 text-dense font-semibold text-brand-medium hover:underline">
@@ -619,6 +622,14 @@ export function PatientRecordView({ id, base, backLabel = 'Patient Records', can
         <StatTile label="Total paid" value={formatRs(s.paidPaisa)} hint={`Bill ${formatRs(s.billedPaisa)}`} />
         <StatTile label="Balance" value={formatRs(s.balancePaisa)} hint={s.cancelled ? `${s.cancelled} cancel / reschedule` : undefined} accent={s.balancePaisa > 0 ? 'danger' : 'ops'} />
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Lab reports</CardTitle>
+          {canUploadLab && <UploadButton route="labReport" recordType="Patient" recordId={p.id} label="Upload lab report" onUploaded={() => void q.refetch()} />}
+        </CardHeader>
+        {labReports.length === 0 ? <p className="text-dense text-muted">Koi lab report nahi.</p> : <Docs docs={labReports} />}
+      </Card>
 
       {visits.length === 0 && otherInvoices.length === 0 && otherProcedures.length === 0 ? (
         <EmptyState title="Koi visit nahi" />
