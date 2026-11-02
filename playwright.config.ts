@@ -16,7 +16,7 @@ function backendEnv(key: string): string {
   return line.slice(key.length + 1).replace(/^"|"$/g, '');
 }
 
-const TEST_DB = backendEnv('DATABASE_URL_TEST');
+const TEST_DB = process.env.DATABASE_URL_TEST ?? backendEnv('DATABASE_URL_TEST');
 const API = 'http://localhost:4100';
 const WEB = 'http://localhost:3100';
 

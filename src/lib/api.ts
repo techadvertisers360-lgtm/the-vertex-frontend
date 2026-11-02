@@ -103,6 +103,20 @@ export async function api<T = unknown>(path: string, opts: RequestOptions = {}):
   throw new ApiError(res.status, code, err?.message ?? 'Kuch ghalat ho gaya.', err?.details);
 }
 
+/** A file from the API (an export). A refused download still carries the API's normal error message. */
+export async function downloadFile(path: string, query?: Query): Promise<Blob> {
+  let res: Response;
+  try {
+    res = await fetch(buildUrl(path, query), { credentials: 'include', headers: { 'x-vh-client': 'web' } });
+  } catch {
+    throw new ApiError(0, 'NETWORK', NETWORK_MESSAGE);
+  }
+  if (res.ok) return res.blob();
+  if (res.status === 401 && (await refreshSession())) return downloadFile(path, query);
+  const err = ((await res.json().catch(() => null)) as { error?: { code?: string; message?: string; details?: unknown } } | null)?.error;
+  throw new ApiError(res.status, err?.code ?? `HTTP_${res.status}`, err?.message ?? 'Download nahi hua.', err?.details);
+}
+
 export const get = <T>(path: string, query?: Query) => api<T>(path, { query });
 export const post = <T>(path: string, body?: unknown, idempotencyKey?: string) => api<T>(path, { method: 'POST', body: body ?? {}, idempotencyKey });
 export const put = <T>(path: string, body?: unknown) => api<T>(path, { method: 'PUT', body: body ?? {} });

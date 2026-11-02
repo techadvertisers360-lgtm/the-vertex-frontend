@@ -180,7 +180,7 @@ export function RealtimeProvider({ children, onOpenRecord }: { children: React.R
           } else {
             toast(n.subject, { description: n.body ?? undefined, duration: 5_000 });
           }
-        } else if (event === 'appointment:updated' || event === 'queue:changed' || event === 'tracker:changed') {
+        } else if (event === 'appointment:updated' || event === 'queue:changed' || event === 'tracker:changed' || event === 'invoices:changed') {
           void qc.invalidateQueries({ queryKey: [event.split(':')[0]] });
         } else if (event === 'session:revoked') {
           revoke((payload as { reason?: string } | null)?.reason);
