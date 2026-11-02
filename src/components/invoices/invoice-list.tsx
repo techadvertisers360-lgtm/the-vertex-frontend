@@ -160,7 +160,7 @@ export function InvoiceListPage() {
     placeholderData: keepPreviousData,
     refetchInterval: pollInterval,
   });
-  const options = useQuery({ queryKey: ['invoices', 'options'], queryFn: () => get<InvoiceOptions>('/invoices/options'), enabled: can('create'), staleTime: 60_000 });
+  const options = useQuery({ queryKey: ['invoice-setup', 'options'], queryFn: () => get<InvoiceOptions>('/invoices/options'), enabled: can('create'), staleTime: 60_000 });
   const showDiscount = list.data ? list.data.items.some((r) => r.discountPaisa !== undefined) || list.data.items.length === 0 : true;
 
   const exporter = useMutation({

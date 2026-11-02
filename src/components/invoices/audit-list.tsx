@@ -28,9 +28,11 @@ export function AuditList({ invoiceId }: { invoiceId?: string }) {
   });
   return (
     <Card className="print:hidden">
-      <CardHeader>
-        <CardTitle>{invoiceId ? 'History' : 'Billing history'}</CardTitle>
-      </CardHeader>
+      {invoiceId && (
+        <CardHeader>
+          <CardTitle>History</CardTitle>
+        </CardHeader>
+      )}
       <QueryState query={q} empty={(d) => d.items.length === 0} emptyTitle="Koi record nahi">
         {(d) => (
           <>

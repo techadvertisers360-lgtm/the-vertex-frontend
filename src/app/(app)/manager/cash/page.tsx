@@ -205,6 +205,11 @@ function ClosingTab() {
                     <span>
                       <span className="font-semibold">{r.receiptNo}</span>
                       {r.invoiceNumber && <span className="block text-[12px] text-muted">{r.invoiceNumber}</span>}
+                      {r.advance && (
+                        <Chip tone="info" className="mt-0.5">
+                          Advance
+                        </Chip>
+                      )}
                       {r.counterSale && (
                         <Chip tone="gold" className="mt-0.5">
                           Counter sale

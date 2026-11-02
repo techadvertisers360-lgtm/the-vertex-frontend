@@ -173,3 +173,87 @@ test('create, pay later, overpay into an advance, print, and cancel', async ({ b
   await expect(phone.getByRole('heading', { name: 'Payments' })).toBeVisible();
   await fitsWidth(phone);
 });
+
+test('side pages: advances, payment modes, categories, settings and history, MD only where required', async ({ browser }) => {
+  const s = S();
+  const stamp = Date.now();
+
+  // Reception records an advance from the Advance Payments tab, and gets no MD tabs or pages
+  const rec = await signIn(browser, s.reception.email);
+  await rec.goto('/reception/invoices');
+  const tabs = rec.getByRole('navigation', { name: 'Invoice pages' });
+  await expect(tabs.getByRole('link', { name: 'Advance Payments' })).toBeVisible();
+  await expect(tabs.getByRole('link')).toHaveCount(2);
+  await rec.goto('/reception/invoices/settings');
+  await expect(rec.getByRole('heading', { name: 'Invoice Settings' })).toHaveCount(0);
+
+  await rec.goto('/reception/invoices/advances');
+  await rec.getByRole('button', { name: 'Advance lein' }).click();
+  const adv = rec.getByRole('dialog');
+  await adv.getByRole('button', { name: 'Naya' }).click();
+  const np = rec.getByRole('dialog').last();
+  await np.getByLabel('Naam').fill(`E2E Adv ${stamp}`);
+  await np.getByLabel('Phone').fill(`0301${String(stamp).slice(-7)}`);
+  await np.getByRole('button', { name: 'Patient save karein' }).click();
+  const form = rec.getByRole('dialog').first();
+  await expect(form.getByText(`E2E Adv ${stamp}`)).toBeVisible();
+  await form.getByLabel('Payment mode').selectOption({ label: 'Cash' });
+  await form.getByLabel('Amount (Rs)').fill('1500');
+  await form.getByRole('button', { name: 'Advance save karein' }).click();
+  await expect(rec.getByText(`E2E Adv ${stamp}`).first()).toBeVisible();
+  await expect(rec.getByText('Advance liya').first()).toBeVisible();
+  await shot(rec, 'advances');
+
+  // Manager: Advance Payments only, no MD tabs
+  const mgr = await signIn(browser, s.manager.email);
+  await mgr.goto('/manager/invoices');
+  await expect(mgr.getByRole('navigation', { name: 'Invoice pages' }).getByRole('link')).toHaveCount(2);
+
+  // MD: all pages
+  const md = await signIn(browser, s.md.email);
+  await md.goto('/md/invoices');
+  await expect(md.getByRole('navigation', { name: 'Invoice pages' }).getByRole('link')).toHaveCount(6);
+
+  await md.goto('/md/invoices/payment-modes');
+  await md.getByLabel('Naam', { exact: true }).fill(`Easypaisa ${stamp}`);
+  await md.getByRole('button', { name: 'Add' }).click();
+  await expect(md.getByLabel(`Naam: Easypaisa ${stamp}`).locator('visible=true')).toBeVisible();
+  await shot(md, 'payment-modes');
+
+  await md.goto('/md/invoices/categories');
+  await md.getByLabel('Naam', { exact: true }).fill(`Skin ${stamp}`);
+  await md.getByRole('button', { name: 'Add' }).click();
+  await expect(md.getByLabel(`Naam: Skin ${stamp}`).locator('visible=true')).toBeVisible();
+  await shot(md, 'categories');
+
+  await md.goto('/md/invoices/settings');
+  await expect(md.getByLabel('Format')).toHaveValue('{PREFIX}-{YYYY}-{SEQ}');
+  await md.getByLabel('Format').fill('NO-NUMBER');
+  await expect(md.getByRole('button', { name: 'Settings save karein' })).toBeDisabled();
+  await md.getByLabel('Format').fill('{PREFIX}-{YYYY}-{SEQ}');
+  await md.getByLabel('Logo chunein').setInputFiles({ name: 'logo.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64') });
+  await expect(md.getByAltText('Clinic logo')).toBeVisible();
+  await md.getByRole('button', { name: 'Settings save karein' }).click();
+  await expect(md.getByText('Settings save ho gayin')).toBeVisible();
+  await shot(md, 'settings');
+  await md.getByRole('button', { name: 'Hatayein' }).click();
+  await md.getByRole('button', { name: 'Settings save karein' }).click();
+
+  await md.goto('/md/invoices/history');
+  await expect(md.getByRole('heading', { name: 'Billing History' })).toBeVisible();
+  await expect(md.getByText('Advance Received').first()).toBeVisible();
+  await shot(md, 'history');
+
+  // the download really arrives
+  await md.goto('/md/invoices');
+  const [file] = await Promise.all([md.waitForEvent('download'), md.getByRole('button', { name: 'Download all' }).click()]);
+  expect(file.suggestedFilename()).toMatch(/^all-invoices-.*\.csv$/);
+
+  const phone = await signIn(browser, s.md.email, { width: 390, height: 844 });
+  for (const page of ['advances', 'payment-modes', 'categories', 'settings', 'history']) {
+    await phone.goto(`/md/invoices/${page}`);
+    await expect(phone.getByRole('navigation', { name: 'Invoice pages' })).toBeVisible();
+    await fitsWidth(phone);
+  }
+  await shot(phone, 'settings-phone');
+});

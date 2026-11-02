@@ -227,10 +227,10 @@ function RenameCell({ name, onSave }: { name: string; onSave: (v: string) => voi
 
 export function PaymentModesPage() {
   const qc = useQueryClient();
-  const q = useQuery({ queryKey: ['invoices', 'modes'], queryFn: () => get<{ items: ModeRow[] }>('/invoices/payment-modes') });
+  const q = useQuery({ queryKey: ['invoice-setup', 'modes'], queryFn: () => get<{ items: ModeRow[] }>('/invoices/payment-modes') });
   const [name, setName] = React.useState('');
   const [method, setMethod] = React.useState<MoneyMethod>('BANK_ONLINE');
-  const refresh = () => void qc.invalidateQueries({ queryKey: ['invoices'] });
+  const refresh = () => void qc.invalidateQueries({ queryKey: ['invoice-setup'] });
   const add = useMutation({
     mutationFn: () => post('/invoices/payment-modes', { name: name.trim(), method }),
     onSuccess: () => {
@@ -299,11 +299,11 @@ interface CategoryRow {
 
 export function CategoriesPage() {
   const qc = useQueryClient();
-  const q = useQuery({ queryKey: ['invoices', 'categories'], queryFn: () => get<{ items: CategoryRow[] }>('/invoices/categories') });
+  const q = useQuery({ queryKey: ['invoice-setup', 'categories'], queryFn: () => get<{ items: CategoryRow[] }>('/invoices/categories') });
   const options = useInvoiceOptions();
   const [name, setName] = React.useState('');
   const [text, setText] = React.useState('');
-  const refresh = () => void qc.invalidateQueries({ queryKey: ['invoices'] });
+  const refresh = () => void qc.invalidateQueries({ queryKey: ['invoice-setup'] });
   const add = useMutation({
     mutationFn: () => post('/invoices/categories', { name: name.trim() }),
     onSuccess: () => {
@@ -414,7 +414,7 @@ async function logoToDataUrl(file: File): Promise<string> {
 
 export function InvoiceSettingsPage() {
   const qc = useQueryClient();
-  const q = useQuery({ queryKey: ['invoices', 'settings'], queryFn: () => get<InvoiceSettings>('/invoices/settings') });
+  const q = useQuery({ queryKey: ['invoice-setup', 'settings'], queryFn: () => get<InvoiceSettings>('/invoices/settings') });
   const [form, setForm] = React.useState<{ numberPrefix: string; numberFormat: string; taxEnabled: boolean; taxPercent: string; clinicName: string; logoDataUrl: string | null } | null>(null);
   React.useEffect(() => {
     if (q.data && !form) setForm({ numberPrefix: q.data.numberPrefix, numberFormat: q.data.numberFormat, taxEnabled: q.data.taxEnabled, taxPercent: String(q.data.taxBasisPoints / 100), clinicName: q.data.clinicName, logoDataUrl: q.data.logoDataUrl });
@@ -426,8 +426,8 @@ export function InvoiceSettingsPage() {
       return put<InvoiceSettings>('/invoices/settings', { numberPrefix: form!.numberPrefix.trim(), numberFormat: form!.numberFormat.trim(), taxEnabled: form!.taxEnabled, taxBasisPoints: bp, clinicName: form!.clinicName.trim(), logoDataUrl: form!.logoDataUrl });
     },
     onSuccess: (d) => {
-      qc.setQueryData(['invoices', 'settings'], d);
-      void qc.invalidateQueries({ queryKey: ['invoices', 'options'] });
+      qc.setQueryData(['invoice-setup', 'settings'], d);
+      void qc.invalidateQueries({ queryKey: ['invoice-setup', 'options'] });
       toast.success('Settings save ho gayin');
     },
   });

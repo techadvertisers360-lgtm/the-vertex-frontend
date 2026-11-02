@@ -53,6 +53,7 @@ const TONES: Record<string, Tone> = {
 };
 
 const LABELS: Record<string, string> = {
+  VOID: 'Cancelled',
   FOLLOW_UP_DUE: 'Follow-up Due',
   CHECKED_IN: 'Checked-in',
   WITH_DOCTOR: 'With Doctor',

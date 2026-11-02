@@ -134,7 +134,7 @@ export interface CashDay {
   cash: { inPaisa: number; outPaisa: number; expectedPaisa: number };
   supplierPayments: { id: string; vendorName: string | null; amountPaisa: number; method: string; reference: string | null; paidAt: string }[];
   perCashier: { cashierId: string; name: string | null; count: number; totalPaisa: number; cashPaisa: number }[];
-  payments: { id: string; receiptNo: string; amountPaisa: number; method: string; reference: string | null; cashierName: string | null; receivedAt: string; invoiceNumber: string | null; counterSale: boolean }[];
+  payments: { advance?: boolean; id: string; receiptNo: string; amountPaisa: number; method: string; reference: string | null; cashierName: string | null; receivedAt: string; invoiceNumber: string | null; counterSale: boolean }[];
   closing: {
     id: string;
     date: string;

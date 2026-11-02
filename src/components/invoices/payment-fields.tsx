@@ -19,7 +19,7 @@ export interface PaymentDraft {
 export const emptyPayment: PaymentDraft = { modeId: '', amount: '', bankAccountId: '', reference: '' };
 
 export function useInvoiceOptions() {
-  return useQuery({ queryKey: ['invoices', 'options'], queryFn: () => get<InvoiceOptions>('/invoices/options'), staleTime: 60_000 });
+  return useQuery({ queryKey: ['invoice-setup', 'options'], queryFn: () => get<InvoiceOptions>('/invoices/options'), staleTime: 60_000 });
 }
 
 /** The mode's method decides what else is needed, the same rules the server checks. */
