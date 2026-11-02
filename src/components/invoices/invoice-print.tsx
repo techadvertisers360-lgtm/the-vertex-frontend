@@ -109,7 +109,7 @@ export function InvoicePrintPage({ id }: { id: string }) {
               <dl className={cn('mt-2 space-y-0.5', !thermal && 'ml-auto max-w-xs')}>
                 <Row label="Sub Total" value={formatRs(inv.subtotalPaisa)} />
                 {!!inv.discountPaisa && <Row label="Discount" value={`− ${formatRs(inv.discountPaisa)}`} />}
-                {inv.taxRateBp !== null && <Row label={`Tax (${taxPercent(inv.taxRateBp)})`} value={formatRs(inv.taxPaisa)} />}
+                {inv.taxRateBp !== null && <Row label={`Tax included (${taxPercent(inv.taxRateBp)})`} value={formatRs(inv.taxPaisa)} />}
                 <Row label="Total" value={formatRs(inv.totalPaisa)} strong />
                 <Row label="Paid" value={formatRs(inv.paidPaisa)} />
                 <Row label="Balance" value={formatRs(inv.balancePaisa)} strong />

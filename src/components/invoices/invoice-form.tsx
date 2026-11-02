@@ -23,13 +23,13 @@ interface Line {
   price: string;
 }
 
-/** A preview, using the server's rule (integer paisa, tax after discount, nearest paisa). The server decides. */
+/** A preview, using the server's rule (integer paisa, tax inside the discounted total, nearest paisa). The server decides. */
 function preview(lines: Line[], discount: number, rateBp: number | null) {
   const prices = lines.map((l) => rupeesToPaisa(l.price));
   const subtotal = prices.reduce<number>((s, p) => s + (p ?? 0), 0);
-  const taxable = subtotal - discount;
-  const tax = rateBp && taxable > 0 ? Math.floor((taxable * rateBp + 5_000) / 10_000) : 0;
-  return { subtotal, tax, total: taxable + tax, linesValid: lines.length > 0 && prices.every((p) => p !== null) && lines.every((l) => l.description.trim()) };
+  const total = subtotal - discount;
+  const tax = rateBp && total > 0 ? Math.floor((total * rateBp + (10_000 + rateBp) / 2) / (10_000 + rateBp)) : 0;
+  return { subtotal, tax, total, linesValid: lines.length > 0 && prices.every((p) => p !== null) && lines.every((l) => l.description.trim()) };
 }
 
 function ServicePicker({ options, onPick }: { options: InvoiceOptions; onPick: (s: InvoiceOptions['services'][number]) => void }) {
@@ -252,7 +252,7 @@ export function InvoiceFormPage() {
             <dl className="h-fit space-y-1 rounded-control bg-canvas p-3 text-dense">
               <MoneyRow label="Sub Total" paisa={p.subtotal} />
               <MoneyRow label="Discount" text={discountPaisa ? `− ${formatRs(discountPaisa)}` : formatRs(0)} />
-              <MoneyRow label={rateBp ? `Tax (${taxPercent(rateBp)})` : 'Tax'} text={rateBp ? formatRs(p.tax) : 'N/A'} />
+              <MoneyRow label={rateBp ? `Tax included (${taxPercent(rateBp)})` : 'Tax'} text={rateBp ? formatRs(p.tax) : 'N/A'} />
               <MoneyRow label="Total" paisa={p.total} strong />
               {!!advancePaisa && <MoneyRow label="Advance" text={`− ${formatRs(advancePaisa)}`} />}
               <MoneyRow label="Paid now" paisa={Math.min(paidPaisa ?? 0, Math.max(afterAdvance, 0))} />

@@ -459,7 +459,7 @@ export function InvoiceSettingsPage() {
               </CardHeader>
               <div className="space-y-3">
                 <Checkbox label="Tax on" checked={f.taxEnabled} onChange={(e) => setForm({ ...f, taxEnabled: e.target.checked })} />
-                <Field label="Tax rate (%)" htmlFor="is-rate" hint="Discount ke baad lagta hai, sirf nayi direct invoices par. Accountant se tasdeeq karein." error={rateValid ? undefined : '0 se 100 ke darmiyan likhein.'}>
+                <Field label="Tax rate (%)" htmlFor="is-rate" hint="Total ke andar dikhta hai, amount nahi barhta. Sirf nayi direct invoices par. Accountant se tasdeeq karein." error={rateValid ? undefined : '0 se 100 ke darmiyan likhein.'}>
                   <Input id="is-rate" inputMode="decimal" value={f.taxPercent} onChange={(e) => setForm({ ...f, taxPercent: e.target.value })} />
                 </Field>
               </div>

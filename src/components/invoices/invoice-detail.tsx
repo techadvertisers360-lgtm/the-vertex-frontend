@@ -312,7 +312,7 @@ export function InvoiceDetailPage({ id }: { id: string }) {
                     <dl className="space-y-1 text-dense">
                       <MoneyRow label="Sub Total" paisa={inv.subtotalPaisa} />
                       {inv.discountPaisa !== undefined && <MoneyRow label="Discount" text={inv.discountPaisa ? `− ${formatRs(inv.discountPaisa)}` : formatRs(0)} />}
-                      <MoneyRow label={inv.taxRateBp ? `Tax (${taxPercent(inv.taxRateBp)})` : 'Tax'} text={inv.taxRateBp === null ? 'N/A' : formatRs(inv.taxPaisa)} />
+                      <MoneyRow label={inv.taxRateBp ? `Tax included (${taxPercent(inv.taxRateBp)})` : 'Tax'} text={inv.taxRateBp === null ? 'N/A' : formatRs(inv.taxPaisa)} />
                       <MoneyRow label="Total" paisa={inv.totalPaisa} strong />
                       <MoneyRow label="Paid" paisa={inv.paidPaisa} />
                       <MoneyRow label="Balance" paisa={inv.balancePaisa} strong tone={inv.balancePaisa > 0 ? 'danger' : undefined} />
