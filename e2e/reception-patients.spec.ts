@@ -22,6 +22,7 @@ for (const [label, viewport] of [
     const history = page.getByRole('link', { name: /^Open History: / });
     await expect(history.first()).toBeVisible();
     await expect(page.getByText(/^\d+ patients$/)).toBeVisible();
+    await expect(page.getByText('Patient chunein')).toHaveCount(0);
 
     await history.first().click();
     await page.waitForURL(/\/reception\/patients\/[^/?]+$/);

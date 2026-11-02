@@ -139,7 +139,7 @@ function PatientsView() {
           </Button>
         }
       />
-      <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
+      <div className={id ? 'grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]' : ''}>
         <div className="space-y-3">
           <Input aria-label="Search patients" value={text} onChange={(e) => setText(e.target.value)} placeholder="Naam ya phone" />
           {list.isPending ? (
@@ -151,7 +151,7 @@ function PatientsView() {
           ) : (
             <>
               <p className="text-dense text-muted">{list.data.pages[0]?.total ?? 0} patients</p>
-              <ul className="space-y-2">
+              <ul className={id ? 'space-y-2' : 'grid gap-2 sm:grid-cols-2 xl:grid-cols-3'}>
                 {rows.map((p) => (
                   <li key={p.id} className={`rounded-card border border-line bg-surface p-3 shadow-card ${id === p.id ? 'bg-brand-light ring-1 ring-brand-medium' : ''}`}>
                     <button onClick={() => open(p.id)} className="w-full rounded-control text-left hover:text-brand">
@@ -180,7 +180,11 @@ function PatientsView() {
           )}
         </div>
         {/* Below the two-column width the chosen patient comes first; otherwise it would open under the whole list. */}
-        <div className={id ? 'order-first xl:order-none' : ''}>{id ? <PatientProfile id={id} /> : <EmptyState title="Patient chunein" hint="List se patient chunein ya naya patient register karein." />}</div>
+        {id && (
+          <div className="order-first xl:order-none">
+            <PatientProfile id={id} />
+          </div>
+        )}
       </div>
       <NewPatientDialog
         open={creating}
