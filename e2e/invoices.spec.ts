@@ -68,3 +68,108 @@ test('list: each role sees the right buttons, totals and tabs, and it works on e
     await shot(p, `list-manager-${name}`);
   }
 });
+
+test('create, pay later, overpay into an advance, print, and cancel', async ({ browser }) => {
+  const s = S();
+  const tag = `E2E Inv ${Date.now()}`;
+  const rec = await signIn(browser, s.reception.email);
+  await rec.goto('/reception/invoices');
+  await rec.getByRole('link', { name: 'Add Invoice' }).click();
+  await rec.waitForURL('**/reception/invoices/new');
+
+  // a new patient, then two lines of our own with an editable price
+  await rec.getByRole('button', { name: 'Naya' }).click();
+  const dialog = rec.getByRole('dialog');
+  await dialog.getByLabel('Naam').fill(tag);
+  await dialog.getByLabel('Phone').fill(`0300${String(Date.now()).slice(-7)}`);
+  await dialog.getByRole('button', { name: 'Patient save karein' }).click();
+  await expect(rec.getByText(tag)).toBeVisible();
+  await rec.getByRole('button', { name: 'Apni line add karein' }).click();
+  await rec.getByLabel('Service 1', { exact: true }).fill('Consultation');
+  await rec.getByLabel('Price (Rs)').first().fill('5000');
+  await rec.getByRole('button', { name: 'Apni line add karein' }).click();
+  await rec.getByLabel('Service 2', { exact: true }).fill('Injection');
+  await rec.getByLabel('Price (Rs)').nth(1).fill('2000');
+  await rec.getByLabel('Discount (Rs)').fill('1000');
+
+  // Balance is worked out as you type: 7000 - 1000 - 2000
+  await rec.getByLabel('Payment mode').selectOption({ label: 'Cash' });
+  await rec.getByLabel('Amount paid now (Rs)').fill('2000');
+  const totals = rec.locator('dl').filter({ hasText: 'Sub Total' });
+  await expect(totals).toContainText('Rs 7,000');
+  await expect(totals).toContainText('Rs 6,000');
+  await expect(totals).toContainText('Rs 4,000');
+  await expect(totals).toContainText('N/A');
+  await shot(rec, 'form-desktop');
+
+  await rec.getByRole('button', { name: /Invoice save karein/ }).click();
+  await rec.waitForURL(/\/reception\/invoices\/(?!new)[^/]+$/);
+  await expect(rec.getByText('Rs 4,000').first()).toBeVisible();
+  await expect(rec.getByRole('button', { name: 'Invoice cancel karein' })).toHaveCount(0); // Reception cannot cancel
+  await expect(rec.getByRole('button', { name: 'Send via SMS / WhatsApp' })).toBeDisabled();
+  await shot(rec, 'detail-reception');
+  const url = new URL(rec.url()).pathname;
+  const invoiceId = url.split('/').pop()!;
+
+  // pay more than the balance: refused until the extra is saved as an advance
+  await rec.getByRole('button', { name: 'Payment lein' }).click();
+  const pay = rec.getByRole('dialog');
+  await pay.getByLabel('Payment mode').selectOption({ label: 'Cash' });
+  await pay.getByLabel('Amount (Rs)').fill('4500');
+  await expect(pay.getByRole('button', { name: 'Payment save karein' })).toBeDisabled();
+  await pay.getByLabel(/advance mein save karein/).check();
+  await pay.getByRole('button', { name: 'Payment save karein' }).click();
+  await expect(rec.getByText('Patient ka advance')).toBeVisible();
+  await expect(rec.getByText('Rs 500', { exact: true }).first()).toBeVisible();
+  await expect(rec.getByText('Closed')).toBeVisible();
+
+  // printing: A4 and thermal; the shell does not print
+  for (const size of ['a4', 'thermal']) {
+    await rec.goto(`${url}/print?size=${size}`);
+    const paper = rec.getByTestId('invoice-print');
+    await expect(paper).toContainText('The Vertex Health');
+    await expect(paper).toContainText('Consultation');
+    await expect(paper).toContainText('Rs 6,000');
+    await rec.emulateMedia({ media: 'print' });
+    await expect(rec.getByRole('button', { name: 'Print' })).toBeHidden();
+    await expect(rec.getByRole('navigation', { name: 'Main' })).toBeHidden();
+    await shot(rec, `print-${size}`);
+    await rec.emulateMedia({ media: 'screen' });
+  }
+
+  // the list finds it, with the balance gone
+  await rec.goto('/reception/invoices');
+  await rec.getByLabel('Search').fill(tag);
+  await expect(rec.getByRole('link', { name: tag }).first()).toBeVisible();
+
+  // Manager cancels with a reason and moves the money to the advance
+  const mgr = await signIn(browser, s.manager.email);
+  await mgr.goto(`/manager/invoices/${invoiceId}`);
+  await mgr.getByRole('button', { name: 'Invoice cancel karein' }).click();
+  const cancel = mgr.getByRole('dialog');
+  await expect(cancel.getByRole('button', { name: 'Cancel karein' })).toBeDisabled();
+  await cancel.getByLabel('Wajah').fill('E2E wrong invoice');
+  await cancel.getByLabel(/advance mein rakhein/).check();
+  await cancel.getByRole('button', { name: 'Cancel karein' }).click();
+  await expect(mgr.getByText(/Wajah: E2E wrong invoice/)).toBeVisible();
+  await shot(mgr, 'detail-cancelled');
+  await mgr.goto('/manager/invoices');
+  await mgr.getByLabel('Search').fill(tag);
+  await expect(mgr.getByText('Cancelled').first()).toBeVisible();
+
+  // MD sees who did what
+  const md = await signIn(browser, s.md.email);
+  await md.goto(`/md/invoices/${invoiceId}`);
+  await expect(md.getByText('Invoice Cancelled')).toBeVisible();
+  await expect(md.getByText('Invoice Created')).toBeVisible();
+
+  // phone
+  const phone = await signIn(browser, s.reception.email, { width: 390, height: 844 });
+  await phone.goto('/reception/invoices/new');
+  await expect(phone.getByRole('heading', { name: 'Service list' })).toBeVisible();
+  await fitsWidth(phone);
+  await shot(phone, 'form-phone');
+  await phone.goto(url);
+  await expect(phone.getByRole('heading', { name: 'Payments' })).toBeVisible();
+  await fitsWidth(phone);
+});

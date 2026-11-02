@@ -52,7 +52,7 @@ function Header({ onMenu, onBell }: { onMenu: () => void; onBell: () => void }) 
   const unread = useUnreadCount();
   const leadership = LEADERSHIP_ROLES.includes(me.user.role);
   return (
-    <header className="sticky top-0 z-30 flex h-header items-center gap-2 bg-brand px-2 text-on-brand sm:px-4">
+    <header className="sticky top-0 z-30 flex h-header items-center gap-2 bg-brand px-2 text-on-brand sm:px-4 print:hidden">
       <Button variant="onBrand" size="icon" className="lg:hidden" onClick={onMenu} aria-label="Open menu">
         <Menu className="size-5" />
       </Button>
@@ -181,18 +181,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="flex min-h-dvh flex-col">
         <Header onMenu={() => setMenuOpen(true)} onBell={onBell} />
         <div className="flex flex-1">
-          <aside className="hidden w-sidebar shrink-0 border-r border-line bg-surface lg:block">
+          <aside className="hidden w-sidebar shrink-0 border-r border-line bg-surface lg:block print:hidden">
             <div className="sticky top-header">
               <NavList />
             </div>
           </aside>
-          <main className="min-w-0 flex-1 px-page-mobile py-4 sm:px-page sm:py-6">
-            <ViewAsBanner />
-            <NotificationPrompt />
+          <main className="min-w-0 flex-1 px-page-mobile py-4 sm:px-page sm:py-6 print:p-0">
+            <div className="print:hidden">
+              <ViewAsBanner />
+              <NotificationPrompt />
+            </div>
             <RoleGuard>{children}</RoleGuard>
           </main>
           {!railHidden && (
-            <aside className="hidden w-rail shrink-0 border-l border-line bg-surface xl:block">
+            <aside className="hidden w-rail shrink-0 border-l border-line bg-surface xl:block print:hidden">
               <div className="sticky top-header h-[calc(100dvh-var(--spacing-header))]">
                 <NotificationRail />
               </div>
